@@ -30,54 +30,6 @@ def create_case3():
     
     return net
 
-number_of_samples = 2000
-number_of_processes = 10
-
-parser = argparse.ArgumentParser(prog='Power Flow Data Generator', description='')
-parser.add_argument('--case', type=str, default='118', help='e.g. 118, 14, 6470rte')
-parser.add_argument('--num_lines_to_remove', '-r', type=int, default=0, help='Number of lines to remove')
-parser.add_argument('--num_lines_to_add', '-a', type=int, default=0, help='Number of lines to add')
-args = parser.parse_args()
-
-num_lines_to_remove = args.num_lines_to_remove
-num_lines_to_add = args.num_lines_to_add
-case = args.case
-
-if case == '3':
-    base_net_create = create_case3
-elif case == '14':
-    base_net_create = pp.networks.case14
-elif case == '118':
-    base_net_create = pp.networks.case118
-elif case == '6470rte':
-    base_net_create = pp.networks.case6470rte
-else:
-    print('Invalid test case.')
-    exit()
-if num_lines_to_remove > 0 or num_lines_to_add > 0:
-    complete_case_name = 'case' + case + 'perturbed' + f'{num_lines_to_remove:1d}' + 'r' + f'{num_lines_to_add:1d}' + 'a'
-base_net = base_net_create()
-base_net.bus['name'] = base_net.bus.index
-print(base_net.bus)
-print(base_net.line)
-
-def create_case3():
-    net = pp.create_empty_network()
-    net.sn_mva = 100
-    b0 = pp.create_bus(net, vn_kv=345., name='bus 0')
-    b1 = pp.create_bus(net, vn_kv=345., name='bus 1')
-    b2 = pp.create_bus(net, vn_kv=345., name='bus 2')
-    pp.create_ext_grid(net, bus=b0, vm_pu=1.02, name="Grid Connection")
-    pp.create_load(net, bus=b2, p_mw=10.3, q_mvar=3, name="Load")
-    # pp.create_gen(net, bus=b1, p_mw=0.5, vm_pu=1.03, name="Gen", max_p_mw=1)
-    pp.create_line(net, from_bus=b0, to_bus=b1, length_km=10, name='line 01', std_type='NAYY 4x50 SE')
-    pp.create_line(net, from_bus=b1, to_bus=b2, length_km=5, name='line 01', std_type='NAYY 4x50 SE')
-    pp.create_line(net, from_bus=b2, to_bus=b0, length_km=20, name='line 01', std_type='NAYY 4x50 SE')
-    
-    net.line['c_nf_per_km'] = pd.Series(0., index=net.line['c_nf_per_km'].index, name=net.line['c_nf_per_km'].name)
-    
-    return net
-
 def remove_c_nf(net):
     net.line['c_nf_per_km'] = pd.Series(0., index=net.line['c_nf_per_km'].index, name=net.line['c_nf_per_km'].name)
     
@@ -115,7 +67,7 @@ def get_adjacency_matrix(net):
     
     return A
 
-def generate_data(sublist_size):
+def generate_data(sublist_size, base_net_create, num_lines_to_remove, num_lines_to_add):
     edge_features_list = []
     node_features_x_list = []
     node_features_y_list = []
@@ -131,7 +83,7 @@ def generate_data(sublist_size):
         n = net.bus.values.shape[0]
         A = get_adjacency_matrix(net)
         
-        net.bus['name'] = base_net.bus.index
+        net.bus['name'] = net.bus.index
 
         r = net.line['r_ohm_per_km'].values    
         x = net.line['x_ohm_per_km'].values
@@ -257,10 +209,12 @@ def generate_data(sublist_size):
             
     return edge_features_list, node_features_x_list, node_features_y_list
 
-def generate_data_parallel(num_samples, num_processes):
+def generate_data_parallel(num_samples, num_processes, *generation_args):
     sublist_size = num_samples // num_processes
     pool = mp.Pool(processes=num_processes)
-    results = pool.map(generate_data, [sublist_size]*num_processes)
+    args = generation_args
+    full_args = [sublist_size, *args]*num_processes
+    results = pool.map(generate_data, full_args)
     pool.close()
     pool.join()
     
@@ -273,87 +227,3 @@ def generate_data_parallel(num_samples, num_processes):
         node_features_y_list += sub_res[2]
         
     return edge_features_list, node_features_x_list, node_features_y_list
-
-if __name__ == '__main__':
-    # Generate data
-    # generate_data(number_of_samples)
-    edge_features_list, node_features_x_list, node_features_y_list = generate_data_parallel(number_of_samples, number_of_processes)
-    
-    # Turn the lists into numpy arrays
-    edge_features = np.array(edge_features_list)
-    node_features_x = np.array(node_features_x_list)
-    node_features_y = np.array(node_features_y_list)
-    # graph_features = np.array(graph_feature_list)
-
-    # Print the shapes
-    # print(f'Adjacency matrix shape: {A.shape}')
-    print(f'edge_features shape: {edge_features.shape}')
-    print(f'node_features_x shape: {node_features_x.shape}')
-    print(f'node_features_y shape: {node_features_y.shape}')
-    # print(f'graph_features shape: {graph_features.shape}')
-
-    print(f'range of edge_features "from": {np.min(edge_features[:,:,0])} - {np.max(edge_features[:,:,0])}')
-    print(f'range of edge_features "to": {np.min(edge_features[:,:,1])} - {np.max(edge_features[:,:,1])}')
-
-    print(f'range of node_features_x "index": {np.min(node_features_x[:,:,0])} - {np.max(node_features_x[:,:,0])}')
-
-    print(f'range of node_features_y "index": {np.min(node_features_y[:,:,0])} - {np.max(node_features_y[:,:,0])}')
-
-    # print(f"A. {A}")
-    # print(f"edge_features. {edge_features}")
-    # print(f"node_features_x. {node_features_x}")
-    # print(f"node_features_y. {node_features_y}")
-
-    # save the features
-    os.makedirs("./data/raw", exist_ok=True)
-    with open("./data/raw/"+complete_case_name+"_edge_features.npy", 'wb') as f:
-        np.save(f, edge_features)
-
-    with open("./data/raw/"+complete_case_name+"_node_features_x.npy", 'wb') as f:
-        np.save(f, node_features_x)
-
-    with open("./data/raw/"+complete_case_name+"_node_features_y.npy", 'wb') as f:
-        np.save(f, node_features_y)
-
-    # with open("./data/"+test_case+"_graph_features.npy", 'wb') as f:
-    #     np.save(f, graph_features)
-
-    # with open("./data/raw/"+test_case+"_adjacency_matrix.npy", 'wb') as f:
-    #     np.save(f, A)
-    
-exit()
-#  Computation time experimental comparison beginning (will be moved to other file later on)
-
-# calculate power flow for every algorithm and calculate time
-algorithms = ["nr", "iwamoto_nr",  "gs", "fdbx", "fdxb"]
-times = []
-
-for a in algorithms:
-    t0 = time.time()
-    # pp.runpp(net, algorithm=a)
-    pp.runpp(net, algorithm=a, init="results", numba=False)
-    t1 = time.time()
-    times.append(t1 - t0)
-
-for a in algorithms:
-    print(f"{a}: {times[algorithms.index(a)]}")
-
-
-# print(net.res_bus.vm_pu)
-# print(net.res_line.loading_percent)
-
-# calculate power flow for every algorithm and calculate time 1000 times
-# algorithms = ["nr", "iwamoto_nr",  "gs", "fdbx", "fdxb"]
-algorithms = ["nr", "iwamoto_nr", "fdbx", "fdxb"]
-times = []
-
-for a in algorithms:
-    print(a)
-    t0 = time.time()
-    for i in range(1000):
-        pp.runpp(net, algorithm=a, init="auto", numba=False)
-    t1 = time.time()
-    times.append(t1 - t0)
-
-for a in algorithms:
-    print(f"{a}: {times[algorithms.index(a)]/1000}")
