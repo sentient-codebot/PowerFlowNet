@@ -1,3 +1,7 @@
+"""this file generates the dataset using pandapower, it is the the 'dataset_generator_pandapower_v2.py' file in the original repository
+Date: Feb 2024
+Author: Nan Lin, Stavros Orfanoudakis
+"""
 import time
 import argparse
 import pandas as pd
