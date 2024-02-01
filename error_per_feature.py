@@ -13,7 +13,7 @@ import time
 import math
 import pandapower as pp
 
-from datasets.PowerFlowData import PowerFlowData
+from datasets.power_flow_data import PowerFlowData
 from networks.MPN import MaskEmbdMultiMPN
 from utils.custom_loss_functions import Masked_L2_loss
 

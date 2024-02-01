@@ -3,7 +3,7 @@ import cvxpy as cp
 import numpy as np
 import os
 from torch_geometric.loader import DataLoader
-from datasets.PowerFlowData import PowerFlowData
+from datasets.power_flow_data import PowerFlowData
 from utils.argument_parser import argument_parser
 from utils.custom_loss_functions import Masked_L2_loss
 from pygsp import graphs

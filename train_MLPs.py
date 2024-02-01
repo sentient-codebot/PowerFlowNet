@@ -8,7 +8,7 @@ from torch_geometric.loader import DataLoader
 
 from tqdm import tqdm
 
-from datasets.PowerFlowData import PowerFlowData
+from datasets.power_flow_data import PowerFlowData
 from networks.MLP import MLP
 from utils.argument_parser import argument_parser
 from utils.training import train_epoch, append_to_json

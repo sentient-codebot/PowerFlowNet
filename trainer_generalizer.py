@@ -9,7 +9,7 @@ from torch_geometric.loader import DataLoader
 import json
 from tqdm import tqdm
 
-from datasets.PowerFlowData import PowerFlowData
+from datasets.power_flow_data import PowerFlowData
 from networks.MPN import MPN, MPN_simplenet, SkipMPN, MaskEmbdMPN, MultiConvNet, MultiMPN, MaskEmbdMultiMPN, MaskEmbdMultiMPN_NoMP
 from utils.argument_parser import argument_parser
 from utils.training import train_epoch, append_to_json

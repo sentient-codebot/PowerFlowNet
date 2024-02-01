@@ -3,7 +3,7 @@ from argparse import ArgumentParser
 import os
 
 from networks.MPN import MPN_simplenet, MaskEmbdMultiMPN
-from datasets.PowerFlowData import PowerFlowData
+from datasets.power_flow_data import PowerFlowData
 from torch_geometric.loader import DataLoader
 from utils.evaluation import load_model
 from utils.explanation import explain_epoch, plot_loss_subgraph, plot_loss_subgraph_per_node, plot_num_nodes_subgraph, \
