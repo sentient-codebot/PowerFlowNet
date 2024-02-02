@@ -126,13 +126,13 @@ def generate_data(sublist_size, base_net_create, num_lines_to_remove, num_lines_
 
     while len(edge_features_list) < sublist_size:
         net = base_net_create()
-        remove_c_nf(net)
+        # remove_c_nf(net)
         
-        success_flag, net = perturb_topology(net, num_lines_to_remove=num_lines_to_remove, num_lines_to_add=num_lines_to_add) # TODO 
-        if success_flag == 1:
-            exit()
+        # success_flag, net = perturb_topology(net, num_lines_to_remove=num_lines_to_remove, num_lines_to_add=num_lines_to_add) # TODO 
+        # if success_flag == 1:
+        #     exit()
         n = net.bus.values.shape[0]
-        A = get_adjacency_matrix(net)
+        # A = get_adjacency_matrix(net)
         
         net.bus['name'] = net.bus.index
 
@@ -174,9 +174,12 @@ def generate_data(sublist_size, base_net_create, num_lines_to_remove, num_lines_
         net.load['p_mw'] = Pd
         net.load['q_mvar'] = Qd
 
+        # Calculate power flow
         try:
             net['converged'] = False
             pp.runpp(net, algorithm='nr', init="results", numba=False)
+            ybus = net._ppc["internal"]["Ybus"].todense()
+            pass
         except:
             if not net['converged']:
                 # print(f"net['converged'] = {net['converged']}")
@@ -278,3 +281,18 @@ def generate_data_parallel(num_samples, num_processes, *generation_args):
         node_features_y_list += sub_res[2]
         
     return edge_features_list, node_features_x_list, node_features_y_list
+
+def newton_raphson():
+    pass
+
+def validate_results(net):
+    " validate the pp NR PF results and the results of the custom newton-raphson iterations. "
+    # pandapower pf
+    pp.runpp(net, numba = False)
+    bus_result_pp = net.res_bus
+    line_result_pp = net.res_line
+    Ybus = net._ppc['internal']['Ybus']
+    P_loads = net.load.p_mw.values / net.sn_mva  # Convert to p.u.
+    Q_loads = net.load.q_mvar.values / net.sn_mva  # Convert to p.u.
+    P_gens = -net.gen.p_mw.values / net.sn_mva  # Generation is negative power injection
+    Q_gens = -net.gen.q_mvar.values / net.sn_mva  # Convert to p.u.
