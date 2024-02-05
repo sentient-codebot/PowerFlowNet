@@ -2,17 +2,21 @@
 Date: Feb 2024
 Author: Nan Lin, Stavros Orfanoudakis
 """
+import csv
 import copy
-import time
-import argparse
+from collections import namedtuple
 import warnings
-import pandas as pd
-import pandapower as pp
-import numpy as np
-import networkx as nx
 import multiprocessing as mp
 import os
 
+import pandas as pd
+import pandapower as pp
+from pandapower import LoadflowNotConverged
+import numpy as np
+import networkx as nx
+from tqdm import tqdm
+
+PowerFlowData = namedtuple('PowerFlowData', ['node_features', 'edge_features', 'sn_mva'])
 
 def create_case3():
     net = pp.create_empty_network()
@@ -118,150 +122,115 @@ def perturb_topology(net, num_lines_to_remove=0, num_lines_to_add=0):
 
     return 0, net_perturbed
 
-def generate_data(sublist_size, base_net_create, num_lines_to_remove, num_lines_to_add):
-    edge_features_list = []
-    node_features_x_list = []
-    node_features_y_list = []
-    # graph_feature_list = []
+def generate_data(num_samples, base_net_create, max_cont_fails=10, is_sub_process=False):
+    sample_list = []
+    num_cont_fails = 0 # number of continous failed pf calculations
+    num_total_fails = 0 # number of total failed pf calculations
 
-    while len(edge_features_list) < sublist_size:
-        net = base_net_create()
-        # remove_c_nf(net)
-        
-        # success_flag, net = perturb_topology(net, num_lines_to_remove=num_lines_to_remove, num_lines_to_add=num_lines_to_add) # TODO 
-        # if success_flag == 1:
-        #     exit()
-        n = net.bus.values.shape[0]
-        # A = get_adjacency_matrix(net)
-        
-        net.bus['name'] = net.bus.index
-
-        r = net.line['r_ohm_per_km'].values    
-        x = net.line['x_ohm_per_km'].values
-        # c = net.line['c_nf_per_km'].values
-        le = net.line['length_km'].values
-        # x = case['branch'][:, 3]
-        # b = case['branch'][:, 4]
-        # tau = case['branch'][:, 8]  # ratio
-
-        Pg = net.gen['p_mw'].values
-        # Pmin = 
-        Pd = net.load['p_mw'].values
-        Qd = net.load['q_mvar'].values
-
-        r = np.random.uniform(0.8*r, 1.2*r, r.shape[0])
-        x = np.random.uniform(0.8*x, 1.2*x, x.shape[0])
-        # c = np.random.uniform(0.8*c, 1.2*c, c.shape[0])
-        le = np.random.uniform(0.8*le, 1.2*le, le.shape[0])
-        
-        # tau = np.random.uniform(0.8*tau, 1.2*tau, case['branch'].shape[0])
-        # angle = np.random.uniform(-0.2, 0.2, case['branch'].shape[0])
-    
-        Vg = np.random.uniform(1.00, 1.05, net.gen['vm_pu'].shape[0])
-        Pg = np.random.normal(Pg, 0.1*np.abs(Pg), net.gen['p_mw'].shape[0])
-        
-        # Pd = np.random.uniform(0.5*Pd, 1.5*Pd, net.load['p_mw'].shape[0])
-        Pd = np.random.normal(Pd, 0.1*np.abs(Pd), net.load['p_mw'].shape[0])
-        # Qd = np.random.uniform(0.5*Qd, 1.5*Qd, net.load['q_mvar'].shape[0])
-        Qd = np.random.normal(Qd, 0.1*np.abs(Qd), net.load['q_mvar'].shape[0])
-        
-        net.line['r_ohm_per_km'] = r 
-        net.line['x_ohm_per_km'] = x 
-
-        net.gen['vm_pu'] = Vg
-        net.gen['p_mw'] = Pg
-
-        net.load['p_mw'] = Pd
-        net.load['q_mvar'] = Qd
-
-        # Calculate power flow
-        try:
-            net['converged'] = False
-            pp.runpp(net, algorithm='nr', init="results", numba=False)
-            ybus = net._ppc["internal"]["Ybus"].todense()
-            pass
-        except:
-            if not net['converged']:
-                # print(f"net['converged'] = {net['converged']}")
-                print(f'Failed to converge, current sample number: {len(edge_features_list)}')
-                import pandapower as pp
-                continue        
-
-        # Graph feature
-        # baseMVA = x[0]['baseMVA']
-
-        # Create a vector od branch features including start and end nodes,r,x,b,tau,angle
-        edge_features = np.zeros((net.line.shape[0], 7))
-        edge_features[:, 0] = net.line['from_bus'].values + 1
-        edge_features[:, 1] = net.line['to_bus'].values + 1
-        edge_features[:, 2], edge_features[:, 3] = get_line_z_pu(net)
-        edge_features[:, 4] = 0
-        edge_features[:, 5] = 0
-        edge_features[:, 6] = 0
-        
-        trafo_edge_features = np.zeros((net.trafo.shape[0], 7))
-        trafo_edge_features[:, 0] = net.trafo['hv_bus'].values + 1
-        trafo_edge_features[:, 1] = net.trafo['lv_bus'].values + 1
-        trafo_edge_features[:, 2], trafo_edge_features[:, 3] = get_trafo_z_pu(net)
-        trafo_edge_features[:, 4] = 0
-        trafo_edge_features[:, 5] = 0
-        trafo_edge_features[:, 6] = 0
-        
-        edge_features = np.concatenate((edge_features, trafo_edge_features), axis=0)
-
-        # Create a vector of node features including index, type, Vm, Va, Pd, Qd, Gs, Bs, Pg
-        # case['bus'] = x[0]['bus']
-
-        node_features_x = np.zeros((n, 9))
-        node_features_x[:, 0] = net.bus['name'].values + 1# index
-        # Va ----This changes for every bus excecpt slack bus
-        node_features_x[:, 3] = np.zeros((n, )) #Va
-        
-        # node_features_x[:, 6] = np.zeros((n,1)) # Gs
-        # node_features_x[:, 7] = np.zeros((n,1)) # Bs
-        # Vm is 1 if type is not "generator" else it is case['gen'][:,j]
-        vm = np.ones(n)
-        types = np.ones(n)*2
-        for j in range(net.gen.shape[0]):    
-            # find index of case['gen'][j,0] in case['bus'][:,0]
-            index = np.where(net.gen['bus'].values[j] == net.bus['name'])[0][0]        
-            vm[index] = net.gen['vm_pu'].values[j]  # Vm = Vg
-            types[index] = 1  # type = generator
-            node_features_x[index, 8] = net.gen['p_mw'].values[j] / net.sn_mva  # Pg / pu
-        
-        node_features_x[:, 2] = vm  # Vm
-        node_features_x[:, 1] = types  # type
-        
-        for j in range(net.load.shape[0]):    
-            # find index of case['gen'][j,0] in case['bus'][:,0]
-            index = np.where(net.load['bus'].values[j] == net.bus['name'])[0][0]        
-            node_features_x[index, 4] = Pd[j] / net.sn_mva  # Pd / pu
-            node_features_x[index, 5] = Qd[j] / net.sn_mva  # Qd / pu
-
-        # Create a vector of node features including index, type, Vm, Va, Pd, Qd, Gs, Bs    
-        node_features_y = np.zeros((n, 8))
-        node_features_y[:, 0] = net.bus['name'].values + 1 # index
-        node_features_y[:, 1] = types  # type
-        # Vm ----This changes for Load Buses
-        # if net.res_bus['vm_pu'].shape[0] == 0:
-        #     pass
-        node_features_y[:, 2] = net.res_bus['vm_pu']  # Vm
-        # Va ----This changes for every bus excecpt slack bus
-        node_features_y[:, 3] = net.res_bus['va_degree']  # Va
-        node_features_y[:, 4] = net.res_bus['p_mw'] / net.sn_mva    # P / pu
-        node_features_y[:, 5] = net.res_bus['q_mvar'] / net.sn_mva  # Q / pu
-        # node_features_y[:, 6] = case['bus'][:, 4]  # Gs
-        # node_features_y[:, 7] = case['bus'][:, 5]  # Bs
-
-        edge_features_list.append(edge_features)
-        node_features_x_list.append(node_features_x)
-        node_features_y_list.append(node_features_y)
-        # graph_feature_list.append(baseMVA)
-
-        if len(edge_features_list) % 10 == 0 or len(edge_features_list) == sublist_size:
-            print(f'[Process {os.getpid()}] Current sample number: {len(edge_features_list)}')
+    with tqdm (total=num_samples, disable = is_sub_process) as pbar:
+        while len(sample_list) < num_samples:
+            if num_cont_fails > max_cont_fails:
+                warnings.warn("Too many failed power flow calculations. Return current samples.")
+                break
             
-    return edge_features_list, node_features_x_list, node_features_y_list
+            net = base_net_create()
+            # remove_c_nf(net)
+            
+            # success_flag, net = perturb_topology(net, num_lines_to_remove=num_lines_to_remove, num_lines_to_add=num_lines_to_add) # TODO 
+            # if success_flag == 1:
+            #     exit()
+            n = net.bus.values.shape[0]
+            # A = get_adjacency_matrix(net)
+            
+            net.bus['name'] = net.bus.index
+
+            # get params: line
+            r = net.line['r_ohm_per_km'].values    
+            x = net.line['x_ohm_per_km'].values
+            c = net.line['c_nf_per_km'].values
+            le = net.line['length_km'].values
+            theta_shift_degree = net.trafo['shift_degree'].values # transformer
+            # also transformer tap position?
+
+            # get params: bus
+            Pg = net.gen['p_mw'].values
+            Pd = net.load['p_mw'].values
+            Qd = net.load['q_mvar'].values
+
+            # alter params: line
+            r = np.random.uniform(0.8*r, 1.2*r, r.shape[0])
+            x = np.random.uniform(0.8*x, 1.2*x, x.shape[0])
+            c = np.random.uniform(0.8*c, 1.2*c, c.shape[0])
+            le = np.random.uniform(0.8*le, 1.2*le, le.shape[0])
+            theta_shift_degree = np.random.uniform(-11.46, 11.46, theta_shift_degree.shape[0]) # -0.2 ~ 0.2 rad
+
+            # alter params: bus
+            Vg = np.random.uniform(0.95, 1.05, net.gen['vm_pu'].shape[0])
+            Pg = np.random.normal(Pg, 0.1*np.abs(Pg), net.gen['p_mw'].shape[0])
+            Pd = np.random.uniform(0.5*Pd, 1.5*np.abs(Pd), net.load['p_mw'].shape[0])
+            Qd = np.random.uniform(0.5*Qd, 1.5*np.abs(Qd), net.load['q_mvar'].shape[0])
+            
+            # assign params
+            net.line['r_ohm_per_km'] = r 
+            net.line['x_ohm_per_km'] = x 
+            net.line['c_nf_per_km'] = c
+            net.line['length_km'] = le
+            net.trafo['shift_degree'] = theta_shift_degree
+
+            net.gen['vm_pu'] = Vg
+            net.gen['p_mw'] = Pg
+            net.load['p_mw'] = Pd
+            net.load['q_mvar'] = Qd
+
+            # Calculate power flow
+            net['converged'] = False
+            try:
+                pp.runpp(net, algorithm='nr', init="results", numba=False)
+            except LoadflowNotConverged:
+                num_cont_fails += 1
+                num_total_fails += 1
+                continue
+            if net['converged'] == False:
+                num_cont_fails += 1
+                num_total_fails += 1
+                continue
+            else:
+                num_cont_fails = 0
+            
+            # Get results
+            ybus = net._ppc["internal"]["Ybus"].todense() 
+
+            # Extract edge index and features from ybus
+            G = nx.Graph(ybus)
+            edge_features_raw = np.array(list(G.edges.data('weight')))
+            edge_weights = np.stack([edge_features_raw[:, 2].real, edge_features_raw[:, 2].imag], axis=1) # shape: (num_edges, 2)
+            edge_features = np.concatenate([edge_features_raw[:, :2], edge_weights], axis=1) # shape: (num_edges, 4). from, to, r, x
+
+            # Extract node features fron net.res. In total, we need: index, type, Vm, Va, Pd, Qd
+            node_results = net.res_bus.values # shape: (num_nodes, 4)
+            node_index = np.arange(len(node_results)) # shape: (num_nodes, )
+            node_type = np.array([2.] * len(node_results)) # slack, generator, load: 0, 1, 2. shape: (num_nodes, )
+            for idx in net.gen['bus'].values:
+                node_type[idx] = 1. # this must be before ext_grid, because ext_grid is also a generator
+            for idx in net.ext_grid['bus'].values:
+                node_type[idx] = 0.
+            node_features = np.stack([node_index, node_type], axis=1) # shape: (num_nodes, 2)
+            node_features = np.concatenate([node_features, node_results], axis=1) # shape: (num_nodes, 6)
+            node_features = node_features.real # shape: (num_nodes, 6)
+            
+            # Append to list
+            sample_list.append(PowerFlowData(node_features, edge_features, net.sn_mva))
+            
+            # pbar
+            pbar.set_description(f'#Success: {len(sample_list)}/{num_samples}, #Fails: {num_total_fails}, #Cont.Fails: {num_cont_fails}')
+            pbar.update(1)
+            
+    return sample_list
+
+def save_data(sample_array: np.ndarray[PowerFlowData], save_dir: str, case_name: str):
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, f'{case_name}_samples.npz')
+    np.savez_compressed(save_path, sample_array)
 
 def generate_data_parallel(num_samples, num_processes, *generation_args):
     sublist_size = num_samples // num_processes
@@ -283,7 +252,7 @@ def generate_data_parallel(num_samples, num_processes, *generation_args):
     return edge_features_list, node_features_x_list, node_features_y_list
 
 def newton_raphson():
-    pass
+    raise NotImplementedError # so much work. i give up for now. 
 
 def validate_results(net):
     " validate the pp NR PF results and the results of the custom newton-raphson iterations. "
@@ -296,3 +265,5 @@ def validate_results(net):
     Q_loads = net.load.q_mvar.values / net.sn_mva  # Convert to p.u.
     P_gens = -net.gen.p_mw.values / net.sn_mva  # Generation is negative power injection
     Q_gens = -net.gen.q_mvar.values / net.sn_mva  # Convert to p.u.
+    
+    raise NotImplementedError
