@@ -2,12 +2,13 @@
 Date: Feb 2024
 Author: Nan Lin, Stavros Orfanoudakis
 """
-import csv
-import copy
-from collections import namedtuple
 import warnings
 import multiprocessing as mp
 import os
+import shutil
+import copy
+from collections import namedtuple
+from functools import partial
 
 import pandas as pd
 import pandapower as pp
@@ -17,6 +18,7 @@ import networkx as nx
 from tqdm import tqdm
 
 PowerFlowData = namedtuple('PowerFlowData', ['node_features', 'edge_features', 'sn_mva'])
+# powerflowdata_dtype = np.dtype([('node_features', 'f8', (None, 6)), ('edge_features', 'f8', (None, 4)), ('sn_mva', 'f8')])
 
 def create_case3():
     net = pp.create_empty_network()
@@ -122,12 +124,12 @@ def perturb_topology(net, num_lines_to_remove=0, num_lines_to_add=0):
 
     return 0, net_perturbed
 
-def generate_data(num_samples, base_net_create, max_cont_fails=10, is_sub_process=False):
+def generate_data(num_samples, base_net_create, max_cont_fails=10, disable_pbar=False):
     sample_list = []
     num_cont_fails = 0 # number of continous failed pf calculations
     num_total_fails = 0 # number of total failed pf calculations
 
-    with tqdm (total=num_samples, disable = is_sub_process) as pbar:
+    with tqdm (total=num_samples, disable = disable_pbar) as pbar:
         while len(sample_list) < num_samples:
             if num_cont_fails > max_cont_fails:
                 warnings.warn("Too many failed power flow calculations. Return current samples.")
@@ -205,6 +207,7 @@ def generate_data(num_samples, base_net_create, max_cont_fails=10, is_sub_proces
             edge_features_raw = np.array(list(G.edges.data('weight')))
             edge_weights = np.stack([edge_features_raw[:, 2].real, edge_features_raw[:, 2].imag], axis=1) # shape: (num_edges, 2)
             edge_features = np.concatenate([edge_features_raw[:, :2], edge_weights], axis=1) # shape: (num_edges, 4). from, to, r, x
+            edge_features = edge_features.real # shape: (num_edges, 4)
 
             # Extract node features fron net.res. In total, we need: index, type, Vm, Va, Pd, Qd
             node_results = net.res_bus.values # shape: (num_nodes, 4)
@@ -231,25 +234,51 @@ def save_data(sample_array: np.ndarray[PowerFlowData], save_dir: str, case_name:
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, f'{case_name}_samples.npz')
     np.savez_compressed(save_path, sample_array)
+    
+def save_data_csv(sample_list: list[PowerFlowData], save_dir: str, case_name: str):
+    os.makedirs(save_dir, exist_ok=True)
+    
+    # node features
+    for idx, sample in enumerate(sample_list):
+        _path = os.path.join(save_dir, 'node_features', f'{case_name}_node_features_{idx}.csv')
+        os.makedirs(os.path.dirname(_path), exist_ok=True)
+        np.savetxt(_path, sample.node_features, 
+                   fmt=['%d', '%d', '%f', '%f', '%f', '%f'],
+                   delimiter=',', header='index,type,Vm,Va,Pd,Qd', comments='')
+        
+    # edge features
+    for idx, sample in enumerate(sample_list):
+        _path = os.path.join(save_dir, 'edge_features', f'{case_name}_edge_features_{idx}.csv')
+        os.makedirs(os.path.dirname(_path), exist_ok=True)
+        np.savetxt(_path, sample.edge_features, 
+                   fmt=['%d', '%d', '%f', '%f'],
+                   delimiter=',', header='from,to,r,x', comments='')
+    
+    # sn_mva
+    for idx, sample in enumerate(sample_list):
+        _path = os.path.join(save_dir, 'sn_mva', f'{case_name}_sn_mva_{idx}.csv')
+        os.makedirs(os.path.dirname(_path), exist_ok=True)
+        np.savetxt(_path, np.array([sample.sn_mva]), delimiter=',', header='sn_mva', comments='')
+        
+def compress_csv(save_dir: str, case_name: str) -> None:
+    dir_to_compress = os.path.join(save_dir, 'case' + case_name)
+    output_filename = os.path.join(save_dir, 'case' + case_name) # without extension
+    shutil.make_archive(output_filename, 'zip', dir_to_compress)
 
-def generate_data_parallel(num_samples, num_processes, *generation_args):
+def generate_data_parallel(num_samples, num_processes, **generation_kwargs) -> list[PowerFlowData]:
     sublist_size = num_samples // num_processes
     pool = mp.Pool(processes=num_processes)
-    args = generation_args
-    full_args = [sublist_size, *args]*num_processes
-    results = pool.map(generate_data, full_args)
+    _generate_data = partial(generate_data, **generation_kwargs,)
+    args = [sublist_size,]*num_processes
+    _res = pool.map(_generate_data, args)
     pool.close()
     pool.join()
     
-    edge_features_list = []
-    node_features_x_list = []
-    node_features_y_list = []
-    for sub_res in results:
-        edge_features_list += sub_res[0]
-        node_features_x_list += sub_res[1]
-        node_features_y_list += sub_res[2]
-        
-    return edge_features_list, node_features_x_list, node_features_y_list
+    results = _res[0]
+    for i in range(1, num_processes):
+        results += _res[i]
+         
+    return results
 
 def newton_raphson():
     raise NotImplementedError # so much work. i give up for now. 
