@@ -236,6 +236,7 @@ def save_data(sample_array: np.ndarray[PowerFlowData], save_dir: str, case_name:
     np.savez_compressed(save_path, sample_array)
     
 def save_data_csv(sample_list: list[PowerFlowData], save_dir: str, case_name: str):
+    save_dir = os.path.join(save_dir, 'case' + case_name)
     os.makedirs(save_dir, exist_ok=True)
     
     # node features
