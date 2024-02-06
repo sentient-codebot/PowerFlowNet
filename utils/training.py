@@ -34,6 +34,7 @@ def train_epoch(
     optimizer: Optimizer,
     device: torch.device,
     total_length: int = 100000,
+    batch_size: int = 128,
 ) -> float:
     """
     Trains a neural network model for one epoch using the specified data loader and optimizer.
@@ -51,41 +52,49 @@ def train_epoch(
     model = model.to(device)
     num_samples = 0
     model.train()
-    train_losses = {}
+    train_losses = {
+        'MaskedL2': {},
+        'PowerImbalance': {},
+        'MSE': {},
+    }
     with tqdm(initial=1, total=785) as pbar:
         for data in loader:
-            data = data.to(device) 
+            data = data.to(device)
             optimizer.zero_grad()
             out = model(data)   # (N, 4)
                                 # data.y.shape == (N, 4)
             
             is_to_pred = get_mask_from_bus_type(data.bus_type) # 0, 1 mask of (N, 4). 1 is need to predict
             if isinstance(loss_fn, Masked_L2_loss):
-                loss = loss_fn(out, data.y, is_to_pred)
-                train_losses['MaskedL2'] = train_losses.get('MaskedL2', 0.) + loss.mean().item() * len(data)
+                loss_terms = loss_fn(out, data.y, is_to_pred)
+                for k, v in loss_terms.items():
+                    train_losses['MaskedL2'][k] = train_losses['MaskedL2'].get(k, 0.) + v.mean().item() * batch_size
+                loss = loss_terms['total']
             elif isinstance(loss_fn, PowerImbalanceV2):
                 masked_out = out * is_to_pred + data.x * (1 - is_to_pred) # (N, 4)
                 loss = loss_fn(masked_out, data.edge_index, data.edge_attr)
-                train_losses['PowerImbalance'] = train_losses.get('PowerImbalance', 0.) + loss.mean().item() * len(data)
+                train_losses['PowerImbalance']['total'] = train_losses['PowerImbalance'].get('total', 0.) + loss.mean().item() * batch_size
             elif isinstance(loss_fn, MixedMSEPoweImbalanceV2):
-                loss_terms = loss_fn(out, data.edge_index, data.edge_attr, data.y)
-                loss = loss_terms['loss']
+                mixed_loss_terms = loss_fn(out, data.edge_index, data.edge_attr, data.y)
+                loss = mixed_loss_terms['loss']
                 with torch.no_grad():
-                    _masked_l2 = Masked_L2_loss(normalize=False)(out, data.y, is_to_pred)
-                train_losses['MaskedL2'] = train_losses.get('MaskedL2', 0.) + _masked_l2.mean().item() * len(data)
-                train_losses['MSE'] = train_losses.get('MSE', 0.) + loss_terms['mse'].mean().item() * len(data)
-                train_losses['PowerImbalance'] = train_losses.get('PowerImbalance', 0.) + loss_terms['physical'].mean().item() * len(data)
+                    masked_l2_loss_terms = Masked_L2_loss(normalize=False)(out, data.y, is_to_pred)
+                for k, v in masked_l2_loss_terms.items():
+                    train_losses['MaskedL2'][k] = train_losses['MaskedL2'].get(k, 0.) + v.mean().item() * batch_size
+                train_losses['MSE']['total'] = train_losses['MSE'].get('total', 0.) + mixed_loss_terms['mse'].mean().item() * batch_size
+                train_losses['PowerImbalance']['total'] = train_losses['PowerImbalance'].get('total', 0.) + mixed_loss_terms['physical'].mean().item() * batch_size
             else:
                 loss = loss_fn(out, data.y)
 
             loss.backward()
             optimizer.step()
-            num_samples += len(data)
+            num_samples += batch_size
             pbar.set_description(f'train loss: {loss.item():.4f}')
             pbar.update(1)
     
     for k, v in train_losses.items():
-        train_losses[k] = v / num_samples
+        for kk, vv in v.items():
+            train_losses[k][kk] = vv / num_samples
 
     return train_losses
 

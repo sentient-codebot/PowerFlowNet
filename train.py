@@ -139,10 +139,14 @@ def main():
     for epoch in range(num_epochs):
         print('Epoch:', epoch+1, '/', num_epochs)
         train_losses = train_epoch(
-            model, train_loader, loss_fn, optimizer, device, total_length=len(train_dp)//batch_size)
-        val_losses = evaluate_epoch(model, val_loader, eval_loss_fn, device, total_length=len(val_dp)//batch_size)
-        train_loss = train_losses['PowerImbalance'] if isinstance(loss_fn, PowerImbalanceV2) else train_losses['MaskedL2']
-        val_loss = val_losses['PowerImbalance'] if isinstance(loss_fn, PowerImbalanceV2) else val_losses['MaskedL2']
+            model, train_loader, loss_fn, optimizer, device, 
+            total_length=len(train_dp)//batch_size, batch_size=batch_size)
+        
+        val_losses = evaluate_epoch(model, val_loader, eval_loss_fn, device, 
+                                    total_length=len(val_dp)//batch_size, batch_size=batch_size)
+        
+        train_loss = train_losses['PowerImbalance']['total'] if isinstance(loss_fn, PowerImbalanceV2) else train_losses['MaskedL2']['total']
+        val_loss = val_losses['PowerImbalance']['total'] if isinstance(loss_fn, PowerImbalanceV2) else val_losses['MaskedL2']['total']
         scheduler.step()
         train_log['train']['loss'].append(train_loss)
         train_log['val']['loss'].append(val_loss)

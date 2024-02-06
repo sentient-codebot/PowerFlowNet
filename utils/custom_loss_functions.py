@@ -38,7 +38,7 @@ class Masked_L2_loss(nn.Module):
 
     def __init__(self, regularize=True, regcoeff=1, normalize=True):
         super(Masked_L2_loss, self).__init__()
-        self.criterion = nn.MSELoss(reduction='mean')
+        self.mse = nn.MSELoss(reduction='none')
         self.regularize = regularize
         self.regcoeff = regcoeff
         self.normalize = normalize
@@ -51,22 +51,17 @@ class Masked_L2_loss(nn.Module):
             output = (output - target_mean) / target_std
             target = (target - target_mean) / target_std
 
-        masked = mask.type(torch.bool)
+        error = self.mse(output, target) # (N, 4)
+        error = (error * mask).sum(dim=0) / mask.sum(dim=0) # (4,)
+        
+        loss_terms = {}
+        loss_terms['total'] = error.mean()
+        loss_terms['vm'] = error[0]
+        loss_terms['va'] = error[1]
+        loss_terms['p'] = error[2]
+        loss_terms['q'] = error[3]
 
-        # output = output * mask
-        # target = target * mask
-        outputl = torch.masked_select(output, masked)
-        targetl = torch.masked_select(target, masked)
-
-        loss = self.criterion(outputl, targetl)
-
-        if self.regularize:
-            masked = (1 - mask).type(torch.bool)
-            output_reg = torch.masked_select(output, masked)
-            target_reg = torch.masked_select(target, masked)
-            loss = loss + self.regcoeff * self.criterion(output_reg, target_reg)
-
-        return loss
+        return loss_terms
     
     
 

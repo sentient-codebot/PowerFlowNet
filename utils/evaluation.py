@@ -57,6 +57,7 @@ def evaluate_epoch(
         loss_fn: Callable,
         device: str = 'cpu',
         total_length: int=100000,
+        batch_size: int=128
 ) -> float:
     """
     Evaluates the performance of a trained neural network model on a dataset using the specified data loader.
@@ -72,7 +73,11 @@ def evaluate_epoch(
     """
     model.eval()
     num_samples = 0
-    train_losses = {}
+    eval_losses = {
+        'MaskedL2': {},
+        'PowerImbalance': {'total': 0.},
+        'MSE': {'total': 0.},
+    }
     pbar = tqdm(loader, total=316, desc='Evaluating:')
     for data in pbar:
         data = data.to(device)
@@ -80,25 +85,26 @@ def evaluate_epoch(
 
         is_to_pred = get_mask_from_bus_type(data.bus_type) # 0, 1 mask of (N, 4). 1 is need to predict
         if isinstance(loss_fn, Masked_L2_loss):
-            loss = loss_fn(out, data.y, is_to_pred)
-            train_losses['MaskedL2'] = train_losses.get('MaskedL2', 0.) + loss.mean().item() * len(data)
+            loss_terms = loss_fn(out, data.y, is_to_pred)
+            for k, v in loss_terms.items():
+                eval_losses['MaskedL2'][k] = eval_losses['MaskedL2'].get(k, 0.) + v.mean().item() * batch_size
         elif isinstance(loss_fn, PowerImbalanceV2):
             masked_out = out * is_to_pred + data.x * (1 - is_to_pred) # (N, 4)
-            loss = loss_fn(masked_out, data.edge_index, data.edge_attr)
-            train_losses['PowerImbalance'] = train_losses.get('PowerImbalance', 0.) + loss.mean().item() * len(data)
+            phys_loss = loss_fn(masked_out, data.edge_index, data.edge_attr) # ()
+            eval_losses['PowerImbalance']['total'] += phys_loss.mean().item() * batch_size
         elif isinstance(loss_fn, MixedMSEPoweImbalanceV2):
-            loss_terms = loss_fn(out, data.edge_index, data.edge_attr, data.y)
-            loss = loss_terms['loss']
-            _masked_l2 = Masked_L2_loss(normalize=False)(out, data.y, is_to_pred)
-            train_losses['MaskedL2'] = train_losses.get('MaskedL2', 0.) + _masked_l2.mean().item() * len(data)
-            train_losses['MSE'] = train_losses.get('MSE', 0.) + loss_terms['mse'].mean().item() * len(data)
-            train_losses['PowerImbalance'] = train_losses.get('PowerImbalance', 0.) + loss_terms['physical'].mean().item() * len(data)
+            mixed_loss_terms = loss_fn(out, data.edge_index, data.edge_attr, data.y)
+            masked_l2_loss_terms = Masked_L2_loss(normalize=False)(out, data.y, is_to_pred)
+            for k, v in masked_l2_loss_terms.items():
+                eval_losses['MaskedL2'][k] = eval_losses['MaskedL2'].get(k, 0.) + v.mean().item() * batch_size
+            eval_losses['MSE']['total'] += mixed_loss_terms['mse'].mean().item() * batch_size
+            eval_losses['PowerImbalance']['total'] += mixed_loss_terms['physical'].mean().item() * batch_size
         else:
-            loss = loss_fn(out, data.y)
+            raise ValueError("Invalid loss function")
 
-        num_samples += len(data)
+        num_samples += batch_size
     
-    for k, v in train_losses.items():
-        train_losses[k] = v / num_samples
-
-    return train_losses
+    for k, v in eval_losses.items():
+        for kk, vv in v.items():
+            eval_losses[k][kk] = vv / num_samples
+    return eval_losses
