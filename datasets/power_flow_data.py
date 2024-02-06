@@ -3,13 +3,16 @@ this file defines the class of PowerFlowData, which is used to load the data of 
 """
 import os
 from typing import Callable, Optional, List, Tuple, Union
+from functools import partial
 
 import numpy as np
 import torch
+from torch.utils.data import IterDataPipe
 import torchdata.datapipes.iter as pipes
 import torch_geometric
-from torch_geometric.data import Data, InMemoryDataset
-from torch_geometric.utils import from_scipy_sparse_matrix, dense_to_sparse
+from torch_geometric.data import Data, Batch, InMemoryDataset
+
+from .datapipe_utils import get_filelist, get_only_matched_node_edge
 
 ori_feature_names_x = [
     'index',                # - removed
@@ -75,7 +78,7 @@ class PowerFlowDataset(InMemoryDataset):
     """PowerFlowData(InMemoryDataset)
 
     Parameters:
-        root (str, optional) – Root directory where the dataset should be saved. (optional: None)
+        root (str, optional) - Root directory where the dataset should be saved. (optional: None)
         pre_filter (callable)- A function 
 
     Comments:
@@ -235,6 +238,55 @@ class PowerFlowDataset(InMemoryDataset):
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])
 
+def create_pf_dp(
+    root: str,
+    case: str,
+    task: str,
+    fill_noise: bool
+) -> IterDataPipe:
+    """
+    process: 
+        - two datapipes in parallel for node and edge
+        - list csv in sorted order
+        - filter out the ones that are not in the split (first 50% train, then 20% val, then 30% test)
+        - read csv as np.array
+        - merge two dp into one that creates Data with node and edges
+    """
+    # dataset specific constants
+    total_samples = 50000
+    split = [0.5, 0.2, 0.3]
+    split_indices = {
+        'train': list(range(int(total_samples*split[0]))),
+        'val': list(range(int(total_samples*split[0]), int(total_samples*sum(split[:2])))),
+        'test': list(range(int(total_samples*sum(split[:2])), total_samples)),
+    }
+    if task == 'validation':
+        task = 'val'
+    
+    # node and edge file list
+    node_files = get_filelist(os.path.join(root, 'raw'), 'node_features', case, split_indices[task])
+    edge_files = get_filelist(os.path.join(root, 'raw'), 'edge_features', case, split_indices[task])
+    node_files, edge_files = get_only_matched_node_edge(node_files, edge_files)
+    
+    # load node and edge together
+    dp = pipes.IterableWrapper(
+        zip(node_files, edge_files),
+    ) 
+    dp = dp.read_pf_data() # (node_array [N, 6], edge_array [E, 4])
+    dp = dp.create_geometric_data(fill_noise=fill_noise) 
+    
+    return dp
+
+def create_batch_dp(dp: IterDataPipe, batch_size: int) -> IterDataPipe:
+    """
+    Create a datapipe to shuffle and batch the data, collate the batched data, and yield. 
+    """
+    collate_fn = partial(torch_geometric.data.Batch.from_data_list)
+    dp = dp.shuffle(buffer_size=500)
+    dp = dp.batch(batch_size)
+    dp = dp.collate(collate_fn=collate_fn) # collate_fn? 
+    
+    return dp
 
 def main():
     try:
