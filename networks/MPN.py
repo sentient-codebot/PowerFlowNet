@@ -20,7 +20,7 @@ class EdgeAggregation(MessagePassing):
         # self.linear = nn.Linear(nfeature_dim, output_dim) 
         self.edge_aggr = nn.Sequential(
             nn.Linear(nfeature_dim*2 + efeature_dim, hidden_dim),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Linear(hidden_dim, output_dim)
         )
         
@@ -724,21 +724,29 @@ class MaskEmbdMultiMPNV2(nn.Module):
         self.n_gnn_layers = n_gnn_layers
         self.K = K
         self.dropout_rate = dropout_rate
-        self.layers = nn.ModuleList()
+        
+        self.init_ln = nn.LayerNorm(in_channels_node)
+        self.mid_layers = nn.ModuleList()
 
-        if n_gnn_layers == 1:
-            self.layers.append(EdgeAggregation(in_channels_node, in_channels_edge, hidden_dim, hidden_dim))
-            self.layers.append(TAGConv(hidden_dim, out_channels_node, K=K))
-        else:
-            self.layers.append(EdgeAggregation(in_channels_node, in_channels_edge, hidden_dim, hidden_dim))
-            self.layers.append(TAGConv(hidden_dim, hidden_dim, K=K))
+        self.init_conv = nn.ModuleDict({
+            'mp': EdgeAggregation(in_channels_node, in_channels_edge, hidden_dim, hidden_dim),
+            'conv': TAGConv(hidden_dim, hidden_dim, K=K)
+        })
 
         for l in range(n_gnn_layers-2):
-            self.layers.append(EdgeAggregation(hidden_dim, in_channels_edge, hidden_dim, hidden_dim))
-            self.layers.append(TAGConv(hidden_dim, hidden_dim, K=K))
+            self.mid_layers.append(nn.ModuleDict({
+                'ln1': nn.LayerNorm(hidden_dim),
+                'ln2': nn.LayerNorm(hidden_dim),
+                'mp': EdgeAggregation(hidden_dim, in_channels_edge, hidden_dim, hidden_dim),
+                'conv': TAGConv(hidden_dim, hidden_dim, K=K),
+                'mlp': nn.Sequential(
+                    nn.Linear(hidden_dim, 4*hidden_dim),
+                    nn.SiLU(),
+                    nn.Linear(4*hidden_dim, hidden_dim)
+                )
+            }))
             
-        # self.layers.append(TAGConv(hidden_dim, output_dim, K=K))
-        self.layers.append(EdgeAggregation(hidden_dim, in_channels_edge, hidden_dim, out_channels_node))
+        self.final_mp = EdgeAggregation(hidden_dim, in_channels_edge, hidden_dim, out_channels_node)
         
         self.bus_type_encoder = BusTypeEncoder(3, in_channels_node) # do i need an mlp to further process it? perhaps not since it's already a learned embedding.
 
@@ -770,30 +778,41 @@ class MaskEmbdMultiMPNV2(nn.Module):
             return edge_index, edge_attr
     
     def forward(self, data):
-        # encode x with bus type
         x = data.x # shape (B*N, in_channels_node), usually in_channels_node = 4
         bus_type = data.bus_type # shape (B*N, 1)
-        encoded_bus_type = self.bus_type_encoder(bus_type) # shape (B*N, in_channels_node)
-        x = x + encoded_bus_type
-        
         edge_index = data.edge_index
         edge_features = data.edge_attr
+        
+        # encode x with bus type
+        encoded_bus_type = self.bus_type_encoder(bus_type) # shape (B*N, in_channels_node)
+        x = self.init_ln(x)
+        x = x + encoded_bus_type
+        
+        # init conv
+        x = self.init_conv['mp'](x, edge_index, edge_features)
+        x = self.init_conv['conv'](x, edge_index)
         
         # make graph undirected -> shouldn't need it now in the data gen v3
         # edge_index, edge_features = self.undirect_graph(edge_index, edge_features)
 
         # message passing and conv
-        for i in range(len(self.layers)-1):
-            if isinstance(self.layers[i], EdgeAggregation):
-                x = self.layers[i](x=x, edge_index=edge_index, edge_attr=edge_features)
-            else:
-                x = self.layers[i](x=x, edge_index=edge_index)
+        for layer in self.mid_layers:
+            mp = layer['mp']
+            conv = layer['conv']
+            ln1 = layer['ln1']
+            ln2 = layer['ln2']
+            mlp = layer['mlp']
+            x_copy = x
+            x = ln1(x) # shape (B*N, hidden_dim)
+            x = mp(x=x, edge_index=edge_index, edge_attr=edge_features)
+            x = nn.SiLU()(x)
+            x = conv(x=x, edge_index=edge_index)
+            x = x + x_copy
+            x_copy = x
+            x = mlp(ln2(x)) + x_copy
             x = nn.Dropout(self.dropout_rate)(x)
-            x = nn.ReLU()(x)
         
-        if isinstance(self.layers[-1], EdgeAggregation):
-            x = self.layers[-1](x=x, edge_index=edge_index, edge_attr=edge_features)
-        else:
-            x = self.layers[-1](x=x, edge_index=edge_index)
+        # final message passing
+        x = self.final_mp(x, edge_index, edge_features)
         
         return x
