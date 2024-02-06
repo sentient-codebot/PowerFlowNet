@@ -49,9 +49,9 @@ def train_epoch(
 
     """
     model = model.to(device)
-    total_loss = 0.
     num_samples = 0
     model.train()
+    train_losses = {}
     pbar = tqdm(loader, total=total_length, desc='Training')
     for data in pbar:
         data = data.to(device) 
@@ -62,22 +62,31 @@ def train_epoch(
         is_to_pred = get_mask_from_bus_type(data.bus_type) # 0, 1 mask of (N, 4). 1 is need to predict
         if isinstance(loss_fn, Masked_L2_loss):
             loss = loss_fn(out, data.y, is_to_pred)
+            train_losses['MaskedL2'] = train_losses.get('MaskedL2', 0.) + loss.mean().item() * len(data)
         elif isinstance(loss_fn, PowerImbalanceV2):
             masked_out = out * is_to_pred + data.x * (1 - is_to_pred) # (N, 4)
             loss = loss_fn(masked_out, data.edge_index, data.edge_attr)
+            train_losses['PowerImbalance'] = train_losses.get('PowerImbalance', 0.) + loss.mean().item() * len(data)
         elif isinstance(loss_fn, MixedMSEPoweImbalanceV2):
             loss_terms = loss_fn(out, data.edge_index, data.edge_attr, data.y)
             loss = loss_terms['loss']
+            with torch.no_grad():
+                _masked_l2 = Masked_L2_loss()(out, data.y, is_to_pred)
+            train_losses['MaskedL2'] = train_losses.get('MaskedL2', 0.) + _masked_l2.mean().item() * len(data)
+            train_losses['MSE'] = train_losses.get('MSE', 0.) + loss_terms['mse'].mean().item() * len(data)
+            train_losses['PowerImbalance'] = train_losses.get('PowerImbalance', 0.) + loss_terms['physical'].mean().item() * len(data)
         else:
             loss = loss_fn(out, data.y)
 
         loss.backward()
         optimizer.step()
         num_samples += len(data)
-        total_loss += loss.item() * len(data)
+        pbar.set_postfix({'loss': loss.item()})
+    
+    for k, v in train_losses.items():
+        train_losses[k] = v / num_samples
 
-    mean_loss = total_loss / num_samples
-    return mean_loss
+    return train_losses
 
 
 def main():

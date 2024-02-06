@@ -133,16 +133,17 @@ def main():
     }
     # pbar = tqdm(range(num_epochs), total=num_epochs, position=0, leave=True)
     for epoch in range(num_epochs):
-        train_loss = train_epoch(
+        train_losses = train_epoch(
             model, train_loader, loss_fn, optimizer, device, total_length=len(train_dp)//batch_size)
         val_loss = evaluate_epoch(model, val_loader, eval_loss_fn, device)
+        train_loss = train_losses['PowerImbalance'] if 'PowerImbalance' in train_losses else train_losses['MaskedL2']
         scheduler.step()
-        train_log['train']['loss'].append(train_loss)
+        train_log['train']['loss'].append()
         train_log['val']['loss'].append(val_loss)
 
         if log_to_wandb:
-            wandb.log({'train_loss': train_loss,
-                      'val_loss': val_loss})
+            wandb.log({'train_loss': train_losses,
+                      'val_loss': val_loss}, step=epoch)
 
         if train_loss < best_train_loss:
             best_train_loss = train_loss
