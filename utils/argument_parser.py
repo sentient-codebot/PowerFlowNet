@@ -51,7 +51,7 @@ def argument_parser():
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--case', type=str, default='14', help='Grid case')
-    parser.add_argument('--wandb', default=False, type=str2bool, help='Enable wandb logging', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--wandb', default=False, type=str2bool, help='Enable wandb logging')
     parser.add_argument('--wandb_entity', type=str, default='PowerFlowNet', help='wandb entity')
     parser.add_argument('--save', default=True, action=argparse.BooleanOptionalAction)
     

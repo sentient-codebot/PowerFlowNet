@@ -55,8 +55,9 @@ def evaluate_epoch(
         model: nn.Module,
         loader: DataLoader,
         loss_fn: Callable,
+        device: str = 'cpu',
         total_length: int=100000,
-        device: str = 'cpu') -> float:
+) -> float:
     """
     Evaluates the performance of a trained neural network model on a dataset using the specified data loader.
 
