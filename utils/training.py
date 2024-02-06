@@ -66,7 +66,8 @@ def train_epoch(
             masked_out = out * is_to_pred + data.x * (1 - is_to_pred) # (N, 4)
             loss = loss_fn(masked_out, data.edge_index, data.edge_attr)
         elif isinstance(loss_fn, MixedMSEPoweImbalanceV2):
-            loss = loss_fn(out, data.edge_index, data.edge_attr, data.y)
+            loss_terms = loss_fn(out, data.edge_index, data.edge_attr, data.y)
+            loss = loss_terms['loss']
         else:
             loss = loss_fn(out, data.y)
 

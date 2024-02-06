@@ -266,9 +266,6 @@ class PowerImbalanceV2(MessagePassing):
         edge_index: edge index  -- (2, num_edges)
         edge_attr: edge features-- (num_edges, 2)
     """
-    base_sn = 100 # kva
-    base_voltage = 345 # kv
-    base_ohm = 1190.25 # v**2/sn
     def __init__(self, reduction='mean'):
         super().__init__(aggr='add', flow='target_to_source')
     
@@ -299,7 +296,7 @@ class PowerImbalanceV2(MessagePassing):
         return edge_index, edge_attr
     
     def message(self, x_i, x_j, edge_attr):
-        """calculate injected power Pji
+        r"""calculate injected power Pji
         
         Formula:
         $$
@@ -312,14 +309,14 @@ class PowerImbalanceV2(MessagePassing):
         $$
         
         Input:
-            x_i: (num_edges, 6)
-            x_j: (num_edges, 6)
+            x_i: (num_edges, 4)
+            x_j: (num_edges, 4)
             edge_attr: (num_edges, 2)
         
         Return:
             Pji|Qji: (num_edges, 2)
         """
-        r_x = edge_attr[:, 0:2] # (num_edges, 2)
+        r_x = edge_attr # (num_edges, 2)
         r, x = r_x[:, 0:1], r_x[:, 1:2]
         # zm_ij = torch.norm(r_x, p=2, dim=-1, keepdim=True) # (num_edges, 1) NOTE (r**2+x**2)**0.5 should be non-zero
         # za_ij = torch.acos(edge_attr[:, 0:1] / zm_ij) # (num_edges, 1)
@@ -410,8 +407,9 @@ class PowerImbalanceV2(MessagePassing):
             \Delta P_i = \sum_{j\in N_i} P_{ji} - P_{ij}
         $$
         """
-        if self.is_directed(edge_index):
-            edge_index, edge_attr = self.undirect_graph(edge_index, edge_attr)
+        # make graph undirected. shouldn't need it anymore. 
+        # if self.is_directed(edge_index):
+        #     edge_index, edge_attr = self.undirect_graph(edge_index, edge_attr)
         
         # --- per unit --- 
         # edge_attr[:, 0:2] = edge_attr[:, 0:2]/self.base_ohm
@@ -422,7 +420,7 @@ class PowerImbalanceV2(MessagePassing):
         # self._is_j = torch.arange(14).view((14,1)).expand((14, 20)).long() == edge_index[1:2,:]
         # --- DEBUG ---        
         dPQ = self.propagate(edge_index, x=x, edge_attr=edge_attr) # (num_nodes, 2)
-        dPQ = dPQ.square().sum(dim=-1) # (num_nodes, 1)
+        dPQ = dPQ.square().sum(dim=-1) # (num_nodes,)
         mean_dPQ = dPQ.mean()
         
         return mean_dPQ
@@ -469,7 +467,7 @@ class MixedMSEPoweImbalanceV2(nn.Module):
         loss_terms['mse'] = mse_loss
         loss_terms['loss'] = loss
         
-        return loss
+        return loss_terms
 
 def main():
     # TODO import trainset, select an data.y, calculate the imbalance
