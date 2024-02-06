@@ -163,7 +163,7 @@ def main():
                     'val_loss': best_val_loss,
                     'model_state_dict': model.state_dict(),
                 }
-                os.makedirs('models', exist_ok=True)
+                os.makedirs(os.path.dirname(SAVE_MODEL_PATH), exist_ok=True)
                 torch.save(_to_save, SAVE_MODEL_PATH)
                 append_to_json(
                     SAVE_LOG_PATH,
@@ -180,6 +180,7 @@ def main():
                         'args': vars(args)
                     }
                 )
+                os.makedirs(os.path.dirname(TRAIN_LOG_PATH), exist_ok=True)
                 torch.save(train_log, TRAIN_LOG_PATH)
 
         print(f"Epoch {epoch+1} / {num_epochs}: train_loss={train_loss:.4f}, val_loss={val_loss:.4f}, best_val_loss={best_val_loss:.4f}")
