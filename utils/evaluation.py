@@ -89,7 +89,7 @@ def evaluate_epoch(
         elif isinstance(loss_fn, MixedMSEPoweImbalanceV2):
             loss_terms = loss_fn(out, data.edge_index, data.edge_attr, data.y)
             loss = loss_terms['loss']
-            _masked_l2 = Masked_L2_loss()(out, data.y, is_to_pred)
+            _masked_l2 = Masked_L2_loss(normalize=False)(out, data.y, is_to_pred)
             train_losses['MaskedL2'] = train_losses.get('MaskedL2', 0.) + _masked_l2.mean().item() * len(data)
             train_losses['MSE'] = train_losses.get('MSE', 0.) + loss_terms['mse'].mean().item() * len(data)
             train_losses['PowerImbalance'] = train_losses.get('PowerImbalance', 0.) + loss_terms['physical'].mean().item() * len(data)
