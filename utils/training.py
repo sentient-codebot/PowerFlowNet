@@ -52,7 +52,7 @@ def train_epoch(
     num_samples = 0
     model.train()
     train_losses = {}
-    with tqdm(initial=1, total=total_length) as pbar:
+    with tqdm(initial=1, total=785) as pbar:
         for data in loader:
             data = data.to(device) 
             optimizer.zero_grad()

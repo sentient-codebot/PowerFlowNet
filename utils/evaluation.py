@@ -73,7 +73,7 @@ def evaluate_epoch(
     model.eval()
     num_samples = 0
     train_losses = {}
-    pbar = tqdm(loader, total=total_length, desc='Evaluating:')
+    pbar = tqdm(loader, total=316, desc='Evaluating:')
     for data in pbar:
         data = data.to(device)
         out = model(data)
