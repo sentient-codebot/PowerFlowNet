@@ -268,12 +268,12 @@ def create_pf_dp(
     node_files = get_filelist(os.path.join(root, 'raw'), 'node_features', case, split_indices[task])
     edge_files = get_filelist(os.path.join(root, 'raw'), 'edge_features', case, split_indices[task])
     node_files, edge_files = get_only_matched_node_edge(node_files, edge_files)
-    
+        
     # load node and edge together
     dp = pipes.IterableWrapper(
         zip(node_files, edge_files),
-    ) 
-    dp = dp.read_pf_data() # (node_array [N, 6], edge_array [E, 4])
+    )
+    dp = dp.read_pf_data(length=len(node_files)) # (node_array [N, 6], edge_array [E, 4])
     dp = dp.create_geometric_data(fill_noise=fill_noise) 
     
     return dp

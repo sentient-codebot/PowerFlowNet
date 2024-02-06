@@ -86,7 +86,7 @@ class ReadEdgeFeatures(IterDataPipe):
 @functional_datapipe('read_pf_data')
 class ReadPFData(IterDataPipe):
     " source_dp: a datapipe that yields a 2-tuple [node_path, edge_path] of csv paths"
-    def __init__(self, source_dp):
+    def __init__(self, source_dp, length=25000):
         super().__init__()
         self.dp = source_dp
         self.node_dtype = np.dtype([
@@ -103,6 +103,10 @@ class ReadPFData(IterDataPipe):
             ('r', np.float32),
             ('x', np.float32),
         ])
+        self.length = length
+        
+    def __len__(self):
+        return self.length
         
     def __iter__(self):
         for node_path, edge_path in self.dp:
@@ -135,6 +139,9 @@ class CreateGeometricData(IterDataPipe):
             out = input*self.node_mask[bus_type_name]
             
         return out
+    
+    def __len__(self):
+        return len(self.dp)
         
     def __iter__(self):
         for node_array, edge_array in self.dp:
