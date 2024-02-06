@@ -61,9 +61,8 @@ def main():
     wandb_entity = args.wandb_entity
     if log_to_wandb:
         wandb.init(project="PowerFlowNet",
-                   entity=wandb_entity,
                    name=run_id,
-                   config=args)
+                   config=vars(args))
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     torch.manual_seed(1234)
