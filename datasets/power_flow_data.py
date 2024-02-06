@@ -9,11 +9,11 @@ import numpy as np
 import torch
 from torch.utils.data import IterDataPipe
 import torchdata.datapipes.iter as pipes
-from torchdata.dataloader2 import DataLoader2, MultiProcessingReadingService
+from torchdata.dataloader2 import DataLoader2, MultiProcessingReadingService, adapter
 import torch_geometric
 from torch_geometric.data import Data, Batch, InMemoryDataset
 
-from .datapipe_utils import get_filelist, get_only_matched_node_edge
+from .datapipe_utils import get_filelist, get_existing_node_edge
 
 ori_feature_names_x = [
     'index',                # - removed
@@ -267,7 +267,7 @@ def create_pf_dp(
     # node and edge file list
     node_files = get_filelist(os.path.join(root, 'raw'), 'node_features', case, split_indices[task])
     edge_files = get_filelist(os.path.join(root, 'raw'), 'edge_features', case, split_indices[task])
-    node_files, edge_files = get_only_matched_node_edge(node_files, edge_files)
+    node_files, edge_files = get_existing_node_edge(node_files, edge_files)
         
     # load node and edge together
     dp = pipes.IterableWrapper(
@@ -289,12 +289,12 @@ def create_batch_dp(dp: IterDataPipe, batch_size: int) -> IterDataPipe:
     
     return dp
 
-def create_dataloader(dp: IterDataPipe, num_workers: int) -> DataLoader2:
+def create_dataloader(dp: IterDataPipe, num_workers: int, shuffle: bool = True) -> DataLoader2:
     """
     Create a DataLoader2 with MultiProcessingReadingService
     """
     rs = MultiProcessingReadingService(num_workers=num_workers)
-    dl = DataLoader2(dp, reading_service=rs)
+    dl = DataLoader2(dp, datapipe_adapter_fn=adapter.Shuffle(shuffle), reading_service=rs)
     return dl
 
 def main():

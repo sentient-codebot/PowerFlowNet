@@ -11,7 +11,7 @@ from torch.optim.optimizer import Optimizer
 import torch.nn as nn
 from tqdm import tqdm
 
-from utils.custom_loss_functions import Masked_L2_loss, PowerImbalance, MixedMSEPoweImbalance
+from utils.custom_loss_functions import Masked_L2_loss, PowerImbalanceV2, MixedMSEPoweImbalanceV2, get_mask_from_bus_type
 
 LOG_DIR = 'logs'
 SAVE_DIR = 'models'
@@ -55,6 +55,7 @@ def evaluate_epoch(
         model: nn.Module,
         loader: DataLoader,
         loss_fn: Callable,
+        total_length: int=100000,
         device: str = 'cpu') -> float:
     """
     Evaluates the performance of a trained neural network model on a dataset using the specified data loader.
@@ -69,29 +70,34 @@ def evaluate_epoch(
 
     """
     model.eval()
-    total_loss = 0.
     num_samples = 0
-    pbar = tqdm(loader, total=len(loader), desc='Evaluating:')
+    train_losses = {}
+    pbar = tqdm(loader, total=total_length, desc='Evaluating:')
     for data in pbar:
         data = data.to(device)
         out = model(data)
 
+        is_to_pred = get_mask_from_bus_type(data.bus_type) # 0, 1 mask of (N, 4). 1 is need to predict
         if isinstance(loss_fn, Masked_L2_loss):
-            loss = loss_fn(out, data.y, data.x[:, 10:])
-        elif isinstance(loss_fn, PowerImbalance):
-            # have to mask out the non-predicted values, otherwise
-            #   the network can learn to predict full-zeros
-            masked_out = out*data.x[:, 10:] \
-                        + data.x[:, 4:10]*(1-data.x[:, 10:])
+            loss = loss_fn(out, data.y, is_to_pred)
+            train_losses['MaskedL2'] = train_losses.get('MaskedL2', 0.) + loss.mean().item() * len(data)
+        elif isinstance(loss_fn, PowerImbalanceV2):
+            masked_out = out * is_to_pred + data.x * (1 - is_to_pred) # (N, 4)
             loss = loss_fn(masked_out, data.edge_index, data.edge_attr)
-            # loss = loss_fn(data.y, data.edge_index, data.edge_attr)
-        elif isinstance(loss_fn, MixedMSEPoweImbalance):
-            loss = loss_fn(out, data.edge_index, data.edge_attr, data.y)
+            train_losses['PowerImbalance'] = train_losses.get('PowerImbalance', 0.) + loss.mean().item() * len(data)
+        elif isinstance(loss_fn, MixedMSEPoweImbalanceV2):
+            loss_terms = loss_fn(out, data.edge_index, data.edge_attr, data.y)
+            loss = loss_terms['loss']
+            _masked_l2 = Masked_L2_loss()(out, data.y, is_to_pred)
+            train_losses['MaskedL2'] = train_losses.get('MaskedL2', 0.) + _masked_l2.mean().item() * len(data)
+            train_losses['MSE'] = train_losses.get('MSE', 0.) + loss_terms['mse'].mean().item() * len(data)
+            train_losses['PowerImbalance'] = train_losses.get('PowerImbalance', 0.) + loss_terms['physical'].mean().item() * len(data)
         else:
             loss = loss_fn(out, data.y)
 
         num_samples += len(data)
-        total_loss += loss.item() * len(data)
+    
+    for k, v in train_losses.items():
+        train_losses[k] = v / num_samples
 
-    mean_loss = total_loss / num_samples
-    return mean_loss
+    return train_losses

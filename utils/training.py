@@ -52,12 +52,12 @@ def train_epoch(
     num_samples = 0
     model.train()
     train_losses = {}
-    pbar = tqdm(loader, total=total_length, desc='Training')
+    pbar = tqdm(loader, total=total_length)
     for data in pbar:
         data = data.to(device) 
         optimizer.zero_grad()
-        out = model(data)   # (N, 6), care about the first four. 
-                            # data.y.shape == (N, 6)
+        out = model(data)   # (N, 4)
+                            # data.y.shape == (N, 4)
         
         is_to_pred = get_mask_from_bus_type(data.bus_type) # 0, 1 mask of (N, 4). 1 is need to predict
         if isinstance(loss_fn, Masked_L2_loss):
@@ -81,7 +81,7 @@ def train_epoch(
         loss.backward()
         optimizer.step()
         num_samples += len(data)
-        pbar.set_postfix({'loss': loss.item()})
+        pbar.set_description(f'train loss: {loss.item():.4f}')
     
     for k, v in train_losses.items():
         train_losses[k] = v / num_samples

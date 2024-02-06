@@ -84,9 +84,14 @@ def main():
     val_dp = create_pf_dp(data_dir, grid_case, 'val', False)
     test_dp = create_pf_dp(data_dir, grid_case, 'test', False)
     
-    train_loader = create_dataloader(create_batch_dp(train_dp, batch_size), 4, True)
-    val_loader = create_dataloader(create_batch_dp(val_dp, batch_size), 4, False)
-    test_loader = create_dataloader(create_batch_dp(test_dp, batch_size), 4, False)
+    if len(train_dp) == 0 or len(val_dp) == 0 or len(test_dp) == 0:
+        raise ValueError("No data found. Please check the data directory and the case name.")
+    
+    print(f"#Samples: training {len(train_dp)}, validation {len(val_dp)}, test {len(test_dp)}")
+    
+    train_loader = create_dataloader(create_batch_dp(train_dp, batch_size), num_workers=4, shuffle=True)
+    val_loader = create_dataloader(create_batch_dp(val_dp, batch_size), num_workers=4, shuffle=False)
+    test_loader = create_dataloader(create_batch_dp(test_dp, batch_size), num_workers=4, shuffle=False)
     
     ## [Optional] physics-informed loss function
     if args.train_loss_fn == 'power_imbalance':
@@ -120,7 +125,7 @@ def main():
     #                                                        factor=0.5,
     #                                                        patience=5,
     #                                                        verbose=True)
-    scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=lr, steps_per_epoch=len(train_loader), epochs=num_epochs)
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=lr, steps_per_epoch=len(train_dp)//batch_size, epochs=num_epochs)
 
     # Step 3: Train model
     best_train_loss = 10000.
@@ -133,10 +138,12 @@ def main():
     }
     # pbar = tqdm(range(num_epochs), total=num_epochs, position=0, leave=True)
     for epoch in range(num_epochs):
+        print('Epoch:', epoch+1, '/', num_epochs)
         train_losses = train_epoch(
             model, train_loader, loss_fn, optimizer, device, total_length=len(train_dp)//batch_size)
-        val_loss = evaluate_epoch(model, val_loader, eval_loss_fn, device)
-        train_loss = train_losses['PowerImbalance'] if 'PowerImbalance' in train_losses else train_losses['MaskedL2']
+        val_losses = evaluate_epoch(model, val_loader, eval_loss_fn, device, total_length=len(val_dp)//batch_size)
+        train_loss = train_losses['PowerImbalance'] if isinstance(loss_fn, PowerImbalanceV2) else train_losses['MaskedL2']
+        val_loss = val_losses['PowerImbalance'] if isinstance(loss_fn, PowerImbalanceV2) else val_losses['MaskedL2']
         scheduler.step()
         train_log['train']['loss'].append()
         train_log['val']['loss'].append(val_loss)

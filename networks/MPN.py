@@ -1,4 +1,4 @@
-from typing import Annotated as float
+from typing import Annotated as Float
 from typing import Annotated as Int
 
 import torch
@@ -707,8 +707,8 @@ class BusTypeEncoder(nn.Module):
         self.embd_dim = embd_dim
         self.embd = nn.Embedding(num_bus_types, embd_dim)
         
-    def forward(self, bus_type: Int[Tensor, 'B*N 1']):
-        return self.embd(bus_type.long())
+    def forward(self, bus_type: Int[Tensor, 'B*N 1']) -> Float[Tensor, 'B*N D']:
+        return self.embd(bus_type.long()).squeeze(1)
     
 class MaskEmbdMultiMPNV2(nn.Module):
     """Wrapped Message Passing Network [version 2. tiny adaptations for data generation v3]
