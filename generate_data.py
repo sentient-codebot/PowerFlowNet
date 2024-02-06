@@ -26,22 +26,12 @@ def main():
     num_samples = args.num_samples
     num_processes = args.num_processes
 
-    if case == '3':
-        base_net_create = create_case3
-    elif case == '14':
-        base_net_create = pp.networks.case14
-    elif case == '118':
-        base_net_create = pp.networks.case118
-    elif case == '6470rte':
-        base_net_create = pp.networks.case6470rte
-    else:
-        print('Invalid test case.')
-        exit()
     # if num_lines_to_remove > 0 or num_lines_to_add > 0:
     #     complete_case_name = 'case' + case + 'perturbed' + f'{num_lines_to_remove:1d}' + 'r' + f'{num_lines_to_add:1d}' + 'a'
         
-    sample_list = generate_data_parallel(num_samples, num_processes, base_net_create=base_net_create, max_cont_fails=10)
-    save_data_csv(sample_list, os.path.join(root, 'raw'), case) 
+    sample_list = generate_data_parallel(num_samples, num_processes, max_cont_fails=10,
+                                         save_data=True, save_dir=os.path.join(root, 'raw'), case_name=case,)
+    # save_data_csv(sample_list, os.path.join(root, 'raw'), case) 
     compress_csv(os.path.join(root, 'raw'), case)
     pass
 
