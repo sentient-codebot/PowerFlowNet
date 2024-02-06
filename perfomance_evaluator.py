@@ -1,5 +1,5 @@
 import torch
-from datasets.power_flow_data import PowerFlowData
+from datasets.power_flow_data import PowerFlowDataset
 from networks.MPN import MPN, MPN_simplenet, MaskEmbdMultiMPN
 from utils.custom_loss_functions import Masked_L2_loss
 import time
@@ -28,7 +28,7 @@ for case in cases:
 
     print(f'\n\nCase {case_name} is being evaluated...')
     # Load testing data
-    testset = PowerFlowData(root="./data/", case=case_name+"v2",
+    testset = PowerFlowDataset(root="./data/", case=case_name+"v2",
                             split=[.5, .2, .3], task='test')
     
     sample_number = 10

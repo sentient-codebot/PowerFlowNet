@@ -9,7 +9,7 @@ from torch_geometric.loader import DataLoader
 import json
 from tqdm import tqdm
 
-from datasets.power_flow_data import PowerFlowData
+from datasets.power_flow_data import PowerFlowDataset
 from networks.MPN import MPN, MPN_simplenet, SkipMPN, MaskEmbdMPN, MultiConvNet, MultiMPN, MaskEmbdMultiMPN, MaskEmbdMultiMPN_NoMP
 from utils.argument_parser import argument_parser
 from utils.training import train_epoch, append_to_json
@@ -72,11 +72,11 @@ def main():
     # torch.backends.cudnn.benchmark = False
 
     # Step 1: Load data
-    trainsets = [PowerFlowData(
+    trainsets = [PowerFlowDataset(
         root=data_dir, case=case, split=[.5, .2, .3], task='train') for case in cases]
-    valsets = [PowerFlowData(
+    valsets = [PowerFlowDataset(
         root=data_dir, case=case, split=[.5, .2, .3], task='val') for case in cases]
-    testsets = [PowerFlowData(
+    testsets = [PowerFlowDataset(
         root=data_dir, case=case, split=[.5, .2, .3], task='test') for case in cases]
 
     train_loaders = []

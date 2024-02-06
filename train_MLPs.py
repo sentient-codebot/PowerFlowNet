@@ -8,7 +8,7 @@ from torch_geometric.loader import DataLoader
 
 from tqdm import tqdm
 
-from datasets.power_flow_data import PowerFlowData
+from datasets.power_flow_data import PowerFlowDataset
 from networks.MLP import MLP
 from utils.argument_parser import argument_parser
 from utils.training import train_epoch, append_to_json
@@ -38,11 +38,11 @@ for case in cases:
     eval_loss_fn = Masked_L2_loss(regularize=False)
 
     # Step 1: Load data
-    trainset = PowerFlowData(
+    trainset = PowerFlowDataset(
         root=data_dir, case=case_name, split=[.5, .2, .3], task='train')
-    valset = PowerFlowData(root=data_dir, case=case_name,
+    valset = PowerFlowDataset(root=data_dir, case=case_name,
                            split=[.5, .2, .3], task='val')
-    testset = PowerFlowData(root=data_dir, case=case_name,
+    testset = PowerFlowDataset(root=data_dir, case=case_name,
                             split=[.5, .2, .3], task='test')
     train_loader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(valset, batch_size=batch_size, shuffle=False)

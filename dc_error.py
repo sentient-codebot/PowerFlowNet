@@ -4,7 +4,7 @@ import numpy as np
 import pickle
 from utils.custom_loss_functions import Masked_L2_loss
 import torch
-from datasets.power_flow_data import PowerFlowData
+from datasets.power_flow_data import PowerFlowDataset
 # write file documentation here
 
 
@@ -48,7 +48,7 @@ eval_loss_fn = Masked_L2_loss(regularize=False)
 
 for i, base_net in enumerate(cases):
     current_sample_number = 0
-    testset = PowerFlowData(root="./data/", case=case_names[i], split=[.5, .2, .3], task='test')
+    testset = PowerFlowDataset(root="./data/", case=case_names[i], split=[.5, .2, .3], task='test')
     
     mask = testset[0].x[:,10:14]   
     

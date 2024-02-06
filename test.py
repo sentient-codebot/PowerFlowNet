@@ -3,7 +3,7 @@ import os
 import torch
 import torch_geometric
 
-from datasets.power_flow_data import PowerFlowData
+from datasets.power_flow_data import PowerFlowDataset
 from networks.MPN import MPN, MPN_simplenet, SkipMPN, MaskEmbdMPN, MultiConvNet, MultiMPN, MaskEmbdMultiMPN
 from utils.evaluation import load_model
 
@@ -37,7 +37,7 @@ def main():
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    testset = PowerFlowData(root=data_dir, case=grid_case,
+    testset = PowerFlowDataset(root=data_dir, case=grid_case,
                             split=[.5, .2, .3], task='test')
     test_loader = DataLoader(testset, batch_size=batch_size, shuffle=False)
     

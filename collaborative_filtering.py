@@ -3,7 +3,7 @@ import cvxpy as cp
 import numpy as np
 import os
 from torch_geometric.loader import DataLoader
-from datasets.power_flow_data import PowerFlowData
+from datasets.power_flow_data import PowerFlowDataset
 from utils.argument_parser import argument_parser
 from utils.custom_loss_functions import Masked_L2_loss
 from pygsp import graphs
@@ -88,11 +88,11 @@ if __name__ == "__main__":
     # grid_case = "118"
 
     # Load the dataset
-    trainset = PowerFlowData(root=data_dir, case=grid_case,
+    trainset = PowerFlowDataset(root=data_dir, case=grid_case,
                             split=[.5, .2, .3], task='train')
-    valset = PowerFlowData(root=data_dir, case=grid_case,
+    valset = PowerFlowDataset(root=data_dir, case=grid_case,
                         split=[.5, .2, .3], task='val')
-    testset = PowerFlowData(root=data_dir, case=grid_case,
+    testset = PowerFlowDataset(root=data_dir, case=grid_case,
                             split=[.5, .2, .3], task='test')
     # train_loader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
     # val_loader = DataLoader(valset, batch_size=batch_size, shuffle=False)

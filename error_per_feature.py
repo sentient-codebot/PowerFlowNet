@@ -13,7 +13,7 @@ import time
 import math
 import pandapower as pp
 
-from datasets.power_flow_data import PowerFlowData
+from datasets.power_flow_data import PowerFlowDataset
 from networks.MPN import MaskEmbdMultiMPN
 from utils.custom_loss_functions import Masked_L2_loss
 
@@ -48,7 +48,7 @@ if GET_RESULTS:
 
         print(f'\n\nCase {case_name} is being evaluated...')
         # Load testing data
-        testset = PowerFlowData(root="./data/", case=case_name,
+        testset = PowerFlowDataset(root="./data/", case=case_name,
                                 split=[.5, .2, .3], task='test')
 
         if sample_number > len(testset):

@@ -8,7 +8,7 @@ from torch_geometric.loader import DataLoader
 
 from tqdm import tqdm
 
-from datasets.power_flow_data import PowerFlowData
+from datasets.power_flow_data import PowerFlowDataset
 from networks.MPN import MPN, MPN_simplenet
 from utils.argument_parser import argument_parser
 from utils.evaluation import evaluate_epoch
@@ -71,7 +71,7 @@ for scenario_index,scenario in enumerate(scenarios_list):
     case_name = scenario.split("case")[1]
     print(f'\n\nCase {case_name} is being evaluated...')
     #Load testing data
-    testset = PowerFlowData(root="./data/", case=case_name, split=[.5, .2, .3], task='test')
+    testset = PowerFlowDataset(root="./data/", case=case_name, split=[.5, .2, .3], task='test')
     sample_number = 1000
     if sample_number > len(testset):
         sample_number = len(testset)

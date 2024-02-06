@@ -3,7 +3,7 @@ from argparse import ArgumentParser
 import os
 
 from networks.MPN import MPN_simplenet, MaskEmbdMultiMPN
-from datasets.power_flow_data import PowerFlowData
+from datasets.power_flow_data import PowerFlowDataset
 from torch_geometric.loader import DataLoader
 from utils.evaluation import load_model
 from utils.explanation import explain_epoch, plot_loss_subgraph, plot_loss_subgraph_per_node, plot_num_nodes_subgraph, \
@@ -51,7 +51,7 @@ def main():
 
         eval_loss_fn = Masked_L2_loss(regularize=False).to(device)
 
-        testset = PowerFlowData(root=data_dir, case=grid_case,
+        testset = PowerFlowDataset(root=data_dir, case=grid_case,
                                     split=[.5, .2, .3], task='test')
         test_loader = DataLoader(testset, batch_size=batch_size, shuffle=False)
         

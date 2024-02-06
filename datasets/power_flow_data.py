@@ -4,15 +4,12 @@ this file defines the class of PowerFlowData, which is used to load the data of 
 import os
 from typing import Callable, Optional, List, Tuple, Union
 
-import torch
 import numpy as np
-import torch.utils.data as data
+import torch
+import torchdata.datapipes.iter as pipes
 import torch_geometric
 from torch_geometric.data import Data, InMemoryDataset
 from torch_geometric.utils import from_scipy_sparse_matrix, dense_to_sparse
-import matplotlib.pyplot as plt
-
-from torch_geometric.datasets import Planetoid
 
 ori_feature_names_x = [
     'index',                # - removed
@@ -74,7 +71,7 @@ edge_feature_names = [
 ]
         
 
-class PowerFlowData(InMemoryDataset):
+class PowerFlowDataset(InMemoryDataset):
     """PowerFlowData(InMemoryDataset)
 
     Parameters:
@@ -257,7 +254,7 @@ def main():
     print(f"node_features_x.shape = {node_features_x.shape}")
     print(f"node_features_y.shape = {node_features_y.shape}")
 
-    trainset = PowerFlowData(root="data", case=14,
+    trainset = PowerFlowDataset(root="data", case=14,
                              split=[.5, .2, .3], task="train")
     train_loader = torch_geometric.loader.DataLoader(
         trainset, batch_size=12, shuffle=True)
