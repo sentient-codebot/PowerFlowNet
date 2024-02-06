@@ -41,8 +41,8 @@ def main():
     data_dir = args.data_dir
     nomalize_data = not args.disable_normalize
     num_epochs = args.num_epochs
-    loss_fn = Masked_L2_loss(regularize=args.regularize, regcoeff=args.regularization_coeff)
-    eval_loss_fn = Masked_L2_loss(regularize=False)
+    loss_fn = Masked_L2_loss(regularize=args.regularize, regcoeff=args.regularization_coeff, normalize=True)
+    eval_loss_fn = Masked_L2_loss(regularize=False, normalize=False)
     lr = args.lr
     batch_size = args.batch_size
     grid_case = args.case
@@ -99,7 +99,7 @@ def main():
     elif args.train_loss_fn == 'masked_l2':
         loss_fn = Masked_L2_loss(regularize=args.regularize, regcoeff=args.regularization_coeff)
     elif args.train_loss_fn == 'mixed_mse_power_imbalance':
-        loss_fn = MixedMSEPoweImbalanceV2(alpha=0.9, tau=0.020).to(device)
+        loss_fn = MixedMSEPoweImbalanceV2(alpha=0.9, tau=0.020, noramlize=True).to(device)
     else:
         loss_fn = torch.nn.MSELoss()
     

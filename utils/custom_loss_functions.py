@@ -36,13 +36,20 @@ class Masked_L2_loss(nn.Module):
         torch.Tensor: The masked L2 loss.
     """
 
-    def __init__(self, regularize=True, regcoeff=1):
+    def __init__(self, regularize=True, regcoeff=1, normalize=True):
         super(Masked_L2_loss, self).__init__()
         self.criterion = nn.MSELoss(reduction='mean')
         self.regularize = regularize
         self.regcoeff = regcoeff
+        self.normalize = normalize
 
     def forward(self, output, target, mask):
+        " target shape (N, 4) "
+        if self.normalize:
+            target_mean = target.mean(dim=0, keepdim=True)
+            target_std = target.std(dim=0, keepdim=True)
+            output = (output - target_mean) / target_std
+            target = (target - target_mean) / target_std
 
         masked = mask.type(torch.bool)
 
@@ -451,18 +458,28 @@ class MixedMSEPoweImbalanceV2(nn.Module):
     
     loss = alpha * mse_loss + (1-alpha) * power_imbalance_loss
     """
-    def __init__(self, alpha=0.5, tau=0.020, reduction='mean'):
+    def __init__(self, alpha=0.5, tau=0.020, reduction='mean', noramlize=True):
         super().__init__()
         assert alpha <= 1. and alpha >= 0
         self.power_imbalance = PowerImbalanceV2(reduction)
         self.mse_loss_fn = nn.MSELoss(reduction=reduction)
         self.alpha = alpha
         self.tau = tau
+        self.normalize = noramlize
+        
+    def _normalize(self, source, target):
+        " target shape: (N, 4) "
+        if not self.normalize:
+            return source, target
+        target_mean, target_std = target.mean(dim=0, keepdim=True), target.std(dim=0, keepdim=True) # (1, 4)
+        source = (source - target_mean) / target_std
+        target = (target - target_mean) / target_std
+        return source, target
     
     def forward(self, x, edge_index, edge_attr, y):
         loss_terms = {}
         power_imb_loss = self.power_imbalance(x, edge_index, edge_attr)
-        mse_loss = self.mse_loss_fn(x, y)
+        mse_loss = self.mse_loss_fn(*self._normalize(x, y))
         loss = self.alpha * mse_loss + (1-self.alpha) * self.tau*power_imb_loss
         loss_terms['physical'] = power_imb_loss
         loss_terms['mse'] = mse_loss
