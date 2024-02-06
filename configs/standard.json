@@ -2,7 +2,7 @@
     "nfeature_dim": 6,
     "efeature_dim": 5,
     "output_dim":   6,
-    "hidden_dim":   129,
+    "hidden_dim":   128,
     "n_gnn_layers": 4,
     "K":            3,
     "dropout_rate": 0.2

@@ -18,14 +18,14 @@ def argument_parser():
     )
     
     # Network Parameters
-    parser.add_argument('--nfeature_dim', type=int, default=6, help='Number of node features')
+    parser.add_argument('--nfeature_dim', type=int, default=4, help='Number of node features')
     parser.add_argument('--efeature_dim', type=int, default=2, help='Number of edge features')
     parser.add_argument('--hidden_dim', type=int, default=128, help='Number of hidden features')
-    parser.add_argument('--output_dim', type=int, default=6, help='Number of output features')
+    parser.add_argument('--output_dim', type=int, default=4, help='Number of output features')
     parser.add_argument('--n_gnn_layers', type=int, default=4, help='Number of GNN layers')
     parser.add_argument('--K', type=int, default=3, help='Number of conv filter taps')
     parser.add_argument('--dropout_rate', type=float, default=0.2, help='Dropout rate')
-    parser.add_argument('--model', type=str, default='MPN', help='Dropout rate')
+    parser.add_argument('--model', type=str, default='MaskEmbdMultiMPN', help='Dropout rate')
     parser.add_argument('--regularize', type=bool, default=True, help='whether the loss function,\
                         during training, will make the masked parts of the output part of the loss function')
     parser.add_argument('--regularization_coeff', type=float, default=1.0, help='Dropout rate')
