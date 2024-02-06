@@ -6,6 +6,21 @@ import torch.nn.functional as F
 from torch_geometric.nn import MessagePassing
 import networkx
 
+def get_mask_from_bus_type(bus_type) -> torch.Tensor:
+    "bus_type: [N, 1]. mask_value = 1 if need to predict, 0 if not."
+    # vm, va, p, q
+    _slack_mask = torch.tensor([[0., 0., 1., 1.,]]) # slack
+    _pv_mask = torch.tensor([[0., 1., 0., 1.,]]) # pv
+    _pq_mask = torch.tensor([[1., 1., 0., 0.,]]) # pq
+    is_slack = (bus_type == 0) # [N, 1]
+    is_pv = (bus_type == 1)
+    is_pq = (bus_type == 2)
+    mask = torch.zeros((bus_type.shape[0], 4)) # [N, 4]
+    mask = torch.where(is_slack, mask+_slack_mask, mask)
+    mask = torch.where(is_pv, mask+_pv_mask, mask)
+    mask = torch.where(is_pq, mask+_pq_mask, mask)
+    
+    return mask
 
 class Masked_L2_loss(nn.Module):
     """
@@ -446,9 +461,13 @@ class MixedMSEPoweImbalanceV2(nn.Module):
         self.tau = tau
     
     def forward(self, x, edge_index, edge_attr, y):
+        loss_terms = {}
         power_imb_loss = self.power_imbalance(x, edge_index, edge_attr)
         mse_loss = self.mse_loss_fn(x, y)
         loss = self.alpha * mse_loss + (1-self.alpha) * self.tau*power_imb_loss
+        loss_terms['physical'] = power_imb_loss
+        loss_terms['mse'] = mse_loss
+        loss_terms['loss'] = loss
         
         return loss
 

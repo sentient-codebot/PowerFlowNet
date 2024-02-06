@@ -9,7 +9,7 @@ from torch.optim.lr_scheduler import LRScheduler
 import torch.nn as nn
 from tqdm import tqdm
 
-from utils.custom_loss_functions import Masked_L2_loss, PowerImbalance, MixedMSEPoweImbalance
+from utils.custom_loss_functions import Masked_L2_loss, PowerImbalanceV2, MixedMSEPoweImbalanceV2, get_mask_from_bus_type
 
 
 def append_to_json(log_path, run_id, result):
@@ -29,17 +29,18 @@ def append_to_json(log_path, run_id, result):
 
 def train_epoch(
     model: nn.Module,
-    loader: DataLoader,
+    loader: torch.utils.data.DataLoader,
     loss_fn: Callable,
     optimizer: Optimizer,
-    device: torch.device
+    device: torch.device,
+    total_length: int = 100000,
 ) -> float:
     """
     Trains a neural network model for one epoch using the specified data loader and optimizer.
 
     Args:
         model (nn.Module): The neural network model to be trained.
-        loader (DataLoader): The PyTorch Geometric DataLoader containing the training data.
+        loader (DataLoader): The PyTorch Geometric DataLoader containing the training data. * Or another DataLoader
         optimizer (torch.optim.Optimizer): The PyTorch optimizer used for training the model.
         device (str): The device used for training the model (default: 'cpu').
 
@@ -51,22 +52,20 @@ def train_epoch(
     total_loss = 0.
     num_samples = 0
     model.train()
-    pbar = tqdm(loader, total=len(loader), desc='Training')
+    pbar = tqdm(loader, total=total_length, desc='Training')
     for data in pbar:
         data = data.to(device) 
         optimizer.zero_grad()
         out = model(data)   # (N, 6), care about the first four. 
                             # data.y.shape == (N, 6)
-
+        
+        is_to_pred = get_mask_from_bus_type(data.bus_type) # 0, 1 mask of (N, 4). 1 is need to predict
         if isinstance(loss_fn, Masked_L2_loss):
-            loss = loss_fn(out, data.y, data.x[:, 10:])
-        elif isinstance(loss_fn, PowerImbalance):
-            # have to mask out the non-predicted values, otherwise
-            #   the network can learn to predict full-zeros
-            masked_out = out*data.x[:, 10:] \
-                        + data.x[:, 4:10]*(1-data.x[:, 10:])
+            loss = loss_fn(out, data.y, is_to_pred)
+        elif isinstance(loss_fn, PowerImbalanceV2):
+            masked_out = out * is_to_pred + data.x * (1 - is_to_pred) # (N, 4)
             loss = loss_fn(masked_out, data.edge_index, data.edge_attr)
-        elif isinstance(loss_fn, MixedMSEPoweImbalance):
+        elif isinstance(loss_fn, MixedMSEPoweImbalanceV2):
             loss = loss_fn(out, data.edge_index, data.edge_attr, data.y)
         else:
             loss = loss_fn(out, data.y)
