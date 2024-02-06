@@ -31,14 +31,17 @@ def filter_indices(filename, indices):
     index = int(index)
     return index in indices
 
-def get_only_matched_node_edge(node_files, edge_files):
+def get_existing_node_edge(node_files, edge_files):
     "get only indices where both node and edge files are present"
     assert len(node_files) == len(edge_files)
-    for idx, (node_file, edge_file) in enumerate(zip(node_files, edge_files)):
-        if (not os.path.exists(node_file)) or (not os.path.exists(edge_file)):
+    idx = 0
+    while idx < len(node_files):
+        if (not os.path.exists(node_files[idx])) or (not os.path.exists(edge_files[idx])):
             node_files.pop(idx)
             edge_files.pop(idx)
-            
+        else:
+            idx += 1        
+    
     return node_files, edge_files
 
 @functional_datapipe('read_node_features')
