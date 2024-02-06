@@ -144,7 +144,7 @@ def main():
         train_loss = train_losses['PowerImbalance'] if isinstance(loss_fn, PowerImbalanceV2) else train_losses['MaskedL2']
         val_loss = val_losses['PowerImbalance'] if isinstance(loss_fn, PowerImbalanceV2) else val_losses['MaskedL2']
         scheduler.step()
-        train_log['train']['loss'].append()
+        train_log['train']['loss'].append(train_loss)
         train_log['val']['loss'].append(val_loss)
 
         if log_to_wandb:
