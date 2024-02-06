@@ -9,6 +9,7 @@ import numpy as np
 import torch
 from torch.utils.data import IterDataPipe
 import torchdata.datapipes.iter as pipes
+from torchdata.dataloader2 import DataLoader2, MultiProcessingReadingService
 import torch_geometric
 from torch_geometric.data import Data, Batch, InMemoryDataset
 
@@ -287,6 +288,14 @@ def create_batch_dp(dp: IterDataPipe, batch_size: int) -> IterDataPipe:
     dp = dp.collate(collate_fn=collate_fn) # collate_fn? 
     
     return dp
+
+def create_dataloader(dp: IterDataPipe, num_workers: int) -> DataLoader2:
+    """
+    Create a DataLoader2 with MultiProcessingReadingService
+    """
+    rs = MultiProcessingReadingService(num_workers=num_workers)
+    dl = DataLoader2(dp, reading_service=rs)
+    return dl
 
 def main():
     try:

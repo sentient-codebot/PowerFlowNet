@@ -39,4 +39,12 @@ rs = MultiProcessingReadingService(num_workers=4)
 train_loader = DataLoader2(batch_dp, reading_service=rs)
 ```
 
+Or you can use a wrapped function.
+
+```python
+from datasets.power_flow_data import create_dataloader
+batch_dp = create_batch_dp(dp, batch_size=32)
+train_loader = create_dataloader(batch_dp, num_workers=4)
+```
+
 Now the `train_loader` can be used to train the GNN model.
