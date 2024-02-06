@@ -1,5 +1,9 @@
+from typing import Annotated as float
+from typing import Annotated as Int
+
 import torch
 import torch.nn as nn
+from torch import Tensor
 from torch_geometric.nn import MessagePassing, TAGConv, GCNConv, ChebConv
 from torch_geometric.utils import degree
 
@@ -695,6 +699,17 @@ class MPN_simplenet(nn.Module):
         
         return x
     
+class BusTypeEncoder(nn.Module):
+    "encoder a bus type (integer) into a continous embedding"
+    def __init__(self, num_bus_types:int=3, embd_dim:int=32):
+        super().__init__()
+        self.num_bus_types = num_bus_types
+        self.embd_dim = embd_dim
+        self.embd = nn.Embedding(num_bus_types, embd_dim)
+        
+    def forward(self, bus_type: Int[Tensor, 'B*N 1']):
+        return self.embd(bus_type.long())
+    
 class MaskEmbdMultiMPNV2(nn.Module):
     """Wrapped Message Passing Network [version 2. tiny adaptations for data generation v3]
         - Mask Embedding
@@ -725,11 +740,7 @@ class MaskEmbdMultiMPNV2(nn.Module):
         # self.layers.append(TAGConv(hidden_dim, output_dim, K=K))
         self.layers.append(EdgeAggregation(hidden_dim, in_channels_edge, hidden_dim, out_channels_node))
         
-        self.mask_embd = nn.Sequential(
-            nn.Linear(in_channels_node, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, in_channels_node)
-        )
+        self.bus_type_encoder = BusTypeEncoder(3, in_channels_node) # do i need an mlp to further process it? perhaps not since it's already a learned embedding.
 
     def is_directed(self, edge_index):
         'determine if a graph id directed by reading only one edge'
@@ -759,26 +770,27 @@ class MaskEmbdMultiMPNV2(nn.Module):
             return edge_index, edge_attr
     
     def forward(self, data):
-        assert data.x.shape[-1] == self.in_channels_node * 2 + 4 # features and their mask + one-hot node type embedding
-        x = data.x[:, 4:4+self.in_channels_node] # first four features: node type. not elegant at all this way. just saying. 
-        input_x = x # problem if there is inplace operation on x, so pay attention
-        mask = data.x[:, -self.in_channels_node:]# last few dimensions: mask.
+        # encode x with bus type
+        x = data.x # shape (B*N, in_channels_node), usually in_channels_node = 4
+        bus_type = data.bus_type # shape (B*N, 1)
+        encoded_bus_type = self.bus_type_encoder(bus_type) # shape (B*N, in_channels_node)
+        x = x + encoded_bus_type
+        
         edge_index = data.edge_index
         edge_features = data.edge_attr
-                
-        x = self.mask_embd(mask) + x
         
-        edge_index, edge_features = self.undirect_graph(edge_index, edge_features)
+        # make graph undirected -> shouldn't need it now in the data gen v3
+        # edge_index, edge_features = self.undirect_graph(edge_index, edge_features)
 
+        # message passing and conv
         for i in range(len(self.layers)-1):
             if isinstance(self.layers[i], EdgeAggregation):
                 x = self.layers[i](x=x, edge_index=edge_index, edge_attr=edge_features)
             else:
                 x = self.layers[i](x=x, edge_index=edge_index)
-            x = nn.Dropout(self.dropout_rate, inplace=False)(x)
+            x = nn.Dropout(self.dropout_rate)(x)
             x = nn.ReLU()(x)
         
-        # x = self.convs[-1](x=x, edge_index=edge_index, edge_weight=edge_attr)
         if isinstance(self.layers[-1], EdgeAggregation):
             x = self.layers[-1](x=x, edge_index=edge_index, edge_attr=edge_features)
         else:
