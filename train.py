@@ -8,12 +8,12 @@ from torch_geometric.loader import DataLoader
 
 from tqdm import tqdm
 
-from datasets.power_flow_data import PowerFlowDataset
-from networks.MPN import MPN, MPN_simplenet, SkipMPN, MaskEmbdMPN, MultiConvNet, MultiMPN, MaskEmbdMultiMPN
+from datasets.power_flow_data import PowerFlowDataset, create_pf_dp, create_batch_dp, create_dataloader
+from networks.MPN import MPN, MPN_simplenet, SkipMPN, MaskEmbdMPN, MultiConvNet, MultiMPN, MaskEmbdMultiMPNV2
 from utils.argument_parser import argument_parser
 from utils.training import train_epoch, append_to_json
 from utils.evaluation import evaluate_epoch
-from utils.custom_loss_functions import Masked_L2_loss, PowerImbalance, MixedMSEPoweImbalance
+from utils.custom_loss_functions import Masked_L2_loss, PowerImbalanceV2, MixedMSEPoweImbalanceV2
 
 import wandb
 
@@ -34,9 +34,8 @@ def main():
         'MaskEmbdMPN': MaskEmbdMPN,
         'MultiConvNet': MultiConvNet,
         'MultiMPN': MultiMPN,
-        'MaskEmbdMultiMPN': MaskEmbdMultiMPN
+        'MaskEmbdMultiMPN': MaskEmbdMultiMPNV2
     }
-    mixed_cases = ['118v2', '14v2']
 
     # Training parameters
     data_dir = args.data_dir
@@ -73,32 +72,38 @@ def main():
     # torch.backends.cudnn.benchmark = False
 
     # Step 1: Load data
-    trainset = PowerFlowDataset(root=data_dir, case=grid_case, split=[.5, .2, .3], task='train', normalize=nomalize_data)
-    valset = PowerFlowDataset(root=data_dir, case=grid_case, split=[.5, .2, .3], task='val', normalize=nomalize_data)
-    testset = PowerFlowDataset(root=data_dir, case=grid_case, split=[.5, .2, .3], task='test', normalize=nomalize_data)
+    # trainset = PowerFlowDataset(root=data_dir, case=grid_case, split=[.5, .2, .3], task='train', normalize=nomalize_data)
+    # valset = PowerFlowDataset(root=data_dir, case=grid_case, split=[.5, .2, .3], task='val', normalize=nomalize_data)
+    # testset = PowerFlowDataset(root=data_dir, case=grid_case, split=[.5, .2, .3], task='test', normalize=nomalize_data)
         
-    train_loader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(valset, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(testset, batch_size=batch_size, shuffle=False)
+    # train_loader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
+    # val_loader = DataLoader(valset, batch_size=batch_size, shuffle=False)
+    # test_loader = DataLoader(testset, batch_size=batch_size, shuffle=False)
+    
+    train_dp = create_pf_dp(data_dir, grid_case, 'train', True)
+    val_dp = create_pf_dp(data_dir, grid_case, 'val', False)
+    test_dp = create_pf_dp(data_dir, grid_case, 'test', False)
+    
+    train_loader = create_dataloader(create_batch_dp(train_dp, batch_size), 4, True)
+    val_loader = create_dataloader(create_batch_dp(val_dp, batch_size), 4, False)
+    test_loader = create_dataloader(create_batch_dp(test_dp, batch_size), 4, False)
     
     ## [Optional] physics-informed loss function
     if args.train_loss_fn == 'power_imbalance':
         # overwrite the loss function
-        loss_fn = PowerImbalance(*trainset.get_data_means_stds()).to(device)
+        loss_fn = PowerImbalanceV2().to(device)
     elif args.train_loss_fn == 'masked_l2':
         loss_fn = Masked_L2_loss(regularize=args.regularize, regcoeff=args.regularization_coeff)
     elif args.train_loss_fn == 'mixed_mse_power_imbalance':
-        loss_fn = MixedMSEPoweImbalance(*trainset.get_data_means_stds(), alpha=0.9).to(device)
+        loss_fn = MixedMSEPoweImbalanceV2(alpha=0.9, tau=0.020).to(device)
     else:
         loss_fn = torch.nn.MSELoss()
     
     # Step 2: Create model and optimizer (and scheduler)
-    node_in_dim, node_out_dim, edge_dim = trainset.get_data_dimensions()
-    assert node_in_dim == 16
     model = model(
-        nfeature_dim=nfeature_dim,
-        efeature_dim=efeature_dim,
-        output_dim=output_dim,
+        in_channels_node=nfeature_dim,
+        in_channels_edge=efeature_dim,
+        out_channels_node=output_dim,
         hidden_dim=hidden_dim,
         n_gnn_layers=n_gnn_layers,
         K=conv_K,

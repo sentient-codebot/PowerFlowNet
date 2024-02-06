@@ -372,7 +372,6 @@ class MaskEmbdMultiMPN(nn.Module):
     """Wrapped Message Passing Network
         - Mask Embedding
         - Multi-step mixed MP+Conv
-        - No convolution layers
     """
     def __init__(self, nfeature_dim, efeature_dim, output_dim, hidden_dim, n_gnn_layers, K, dropout_rate):
         super().__init__()
@@ -693,5 +692,96 @@ class MPN_simplenet(nn.Module):
             x = nn.ReLU()(x)
         
         x = self.convs[-1](x=x, edge_index=edge_index)
+        
+        return x
+    
+class MaskEmbdMultiMPNV2(nn.Module):
+    """Wrapped Message Passing Network [version 2. tiny adaptations for data generation v3]
+        - Mask Embedding
+        - Multi-step mixed MP+Conv
+    """
+    def __init__(self, in_channels_node, in_channels_edge, out_channels_node, hidden_dim, n_gnn_layers, K, dropout_rate):
+        super().__init__()
+        self.in_channels_node = in_channels_node
+        self.in_channels_edge = in_channels_edge
+        self.out_channels_node = out_channels_node
+        self.hidden_dim = hidden_dim
+        self.n_gnn_layers = n_gnn_layers
+        self.K = K
+        self.dropout_rate = dropout_rate
+        self.layers = nn.ModuleList()
+
+        if n_gnn_layers == 1:
+            self.layers.append(EdgeAggregation(in_channels_node, in_channels_edge, hidden_dim, hidden_dim))
+            self.layers.append(TAGConv(hidden_dim, out_channels_node, K=K))
+        else:
+            self.layers.append(EdgeAggregation(in_channels_node, in_channels_edge, hidden_dim, hidden_dim))
+            self.layers.append(TAGConv(hidden_dim, hidden_dim, K=K))
+
+        for l in range(n_gnn_layers-2):
+            self.layers.append(EdgeAggregation(hidden_dim, in_channels_edge, hidden_dim, hidden_dim))
+            self.layers.append(TAGConv(hidden_dim, hidden_dim, K=K))
+            
+        # self.layers.append(TAGConv(hidden_dim, output_dim, K=K))
+        self.layers.append(EdgeAggregation(hidden_dim, in_channels_edge, hidden_dim, out_channels_node))
+        
+        self.mask_embd = nn.Sequential(
+            nn.Linear(in_channels_node, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, in_channels_node)
+        )
+
+    def is_directed(self, edge_index):
+        'determine if a graph id directed by reading only one edge'
+        if edge_index.shape[1] == 0:
+            # no edge at all, only single nodes. automatically undirected
+            return False
+        # next line: if there is the reverse of the first edge does not exist, then directed. 
+        return edge_index[0,0] not in edge_index[1,edge_index[0,:] == edge_index[1,0]]
+    
+    def undirect_graph(self, edge_index, edge_attr):
+        if self.is_directed(edge_index):
+            edge_index_dup = torch.stack(
+                [edge_index[1,:], edge_index[0,:]],
+                dim = 0
+            )   # (2, E)
+            edge_index = torch.cat(
+                [edge_index, edge_index_dup],
+                dim = 1
+            )   # (2, 2*E)
+            edge_attr = torch.cat(
+                [edge_attr, edge_attr],
+                dim = 0
+            )   # (2*E, fe)
+            
+            return edge_index, edge_attr
+        else:
+            return edge_index, edge_attr
+    
+    def forward(self, data):
+        assert data.x.shape[-1] == self.in_channels_node * 2 + 4 # features and their mask + one-hot node type embedding
+        x = data.x[:, 4:4+self.in_channels_node] # first four features: node type. not elegant at all this way. just saying. 
+        input_x = x # problem if there is inplace operation on x, so pay attention
+        mask = data.x[:, -self.in_channels_node:]# last few dimensions: mask.
+        edge_index = data.edge_index
+        edge_features = data.edge_attr
+                
+        x = self.mask_embd(mask) + x
+        
+        edge_index, edge_features = self.undirect_graph(edge_index, edge_features)
+
+        for i in range(len(self.layers)-1):
+            if isinstance(self.layers[i], EdgeAggregation):
+                x = self.layers[i](x=x, edge_index=edge_index, edge_attr=edge_features)
+            else:
+                x = self.layers[i](x=x, edge_index=edge_index)
+            x = nn.Dropout(self.dropout_rate, inplace=False)(x)
+            x = nn.ReLU()(x)
+        
+        # x = self.convs[-1](x=x, edge_index=edge_index, edge_weight=edge_attr)
+        if isinstance(self.layers[-1], EdgeAggregation):
+            x = self.layers[-1](x=x, edge_index=edge_index, edge_attr=edge_features)
+        else:
+            x = self.layers[-1](x=x, edge_index=edge_index)
         
         return x
