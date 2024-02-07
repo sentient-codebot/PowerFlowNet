@@ -47,7 +47,7 @@ class Masked_L2_loss(nn.Module):
         self.split_real_imag = split_real_imag
 
     def forward(self, output, target, mask):
-        " target shape (N, 4) "
+        " target shape (N, 4), mask shape (N, 4) "
         # maybe actually I can skip this. backward on real and imag part error is perhaps the key. 
         # output = torch.stack([output[:,0], output[:, 1] % 360., output[:, 2], output[:, 3]], dim=-1)
         # target = torch.stack([target[:,0], target[:, 1] % 360., target[:, 2], target[:, 3]], dim=-1)
@@ -58,6 +58,8 @@ class Masked_L2_loss(nn.Module):
             target_vreal, target_vimag = target_vm * torch.cos(target_va), target_vm * torch.sin(target_va)
             output = torch.cat([output_vreal, output_vimag, output[:, 2:4]], dim=-1)
             target = torch.cat([target_vreal, target_vimag, target[:, 2:4]], dim=-1)
+            _pred_vrealvimag = torch.logical_or(mask[:, 0:1], mask[:, 1:2]) # (N, 1)
+            mask = torch.cat([_pred_vrealvimag, _pred_vrealvimag, mask[:, 2:4]], dim=-1) # (N, 4)
         if self.normalize:
             target_mean = target.mean(dim=0, keepdim=True)
             target_std = target.std(dim=0, keepdim=True)
