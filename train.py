@@ -79,16 +79,16 @@ def main():
     # val_loader = DataLoader(valset, batch_size=batch_size, shuffle=False)
     # test_loader = DataLoader(testset, batch_size=batch_size, shuffle=False)
     
-    train_dp = create_pf_dp(data_dir, grid_case, 'train', True, 20)
-    val_dp = create_pf_dp(data_dir, grid_case, 'val', False, 20)
-    test_dp = create_pf_dp(data_dir, grid_case, 'test', False, 20)
+    train_dp = create_pf_dp(data_dir, grid_case, 'train', True, 50000)
+    val_dp = create_pf_dp(data_dir, grid_case, 'val', False, 50000)
+    test_dp = create_pf_dp(data_dir, grid_case, 'test', False, 50000)
     
     if len(train_dp) == 0 or len(val_dp) == 0 or len(test_dp) == 0:
         raise ValueError("No data found. Please check the data directory and the case name.")
     
     print(f"#Samples: training {len(train_dp)}, validation {len(val_dp)}, test {len(test_dp)}")
     
-    train_loader = create_dataloader(create_batch_dp(train_dp, batch_size), num_workers=1, shuffle=True)
+    train_loader = create_dataloader(create_batch_dp(train_dp, batch_size), num_workers=4, shuffle=True)
     val_loader = create_dataloader(create_batch_dp(val_dp, batch_size), num_workers=4, shuffle=False)
     test_loader = create_dataloader(create_batch_dp(test_dp, batch_size), num_workers=4, shuffle=False)
     
@@ -203,7 +203,7 @@ def main():
         test_loss = evaluate_epoch(model, test_loader, eval_loss_fn, device)
         print(f"Test loss: {best_val_loss:.4f}")
         if log_to_wandb:
-            wandb.log({'test_loss', test_loss})
+            wandb.log({'test_loss': test_loss})
 
     # Step 5: Save results
     os.makedirs(os.path.join(LOG_DIR, 'train_log'), exist_ok=True)
