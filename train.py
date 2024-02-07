@@ -99,7 +99,7 @@ def main():
     elif args.train_loss_fn == 'masked_l2':
         loss_fn = Masked_L2_loss(regularize=args.regularize, regcoeff=args.regularization_coeff)
     elif args.train_loss_fn == 'mixed_mse_power_imbalance' or args.train_loss_fn == 'mixed':
-        loss_fn = MixedMSEPoweImbalanceV2(alpha=0.9, tau=0.020, noramlize=True).to(device)
+        loss_fn = MixedMSEPoweImbalanceV2(alpha=0.9, tau=0.020, noramlize=True, split_real_imag=True).to(device)
     else:
         loss_fn = torch.nn.MSELoss()
     

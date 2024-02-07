@@ -36,15 +36,23 @@ class Masked_L2_loss(nn.Module):
         torch.Tensor: The masked L2 loss.
     """
 
-    def __init__(self, regularize=True, regcoeff=1, normalize=True):
+    def __init__(self, regularize=True, regcoeff=1, normalize=True, split_real_imag=False):
         super(Masked_L2_loss, self).__init__()
         self.mse = nn.MSELoss(reduction='none')
         self.regularize = regularize
         self.regcoeff = regcoeff
         self.normalize = normalize
+        self.split_real_imag = split_real_imag
 
     def forward(self, output, target, mask):
         " target shape (N, 4) "
+        if self.split_real_imag:
+            output_vm, output_va = output[:, 0:1], output[:, 1:2]
+            output_vreal, output_vimag = output_vm * torch.cos(output_va), output_vm * torch.sin(output_va)
+            target_vm, target_va = target[:, 0:1], target[:, 1:2]
+            target_vreal, target_vimag = target_vm * torch.cos(target_va), target_vm * torch.sin(target_va)
+            output = torch.cat([output_vreal, output_vimag, output[:, 2:4]], dim=-1)
+            target = torch.cat([target_vreal, target_vimag, target[:, 2:4]], dim=-1)
         if self.normalize:
             target_mean = target.mean(dim=0, keepdim=True)
             target_std = target.std(dim=0, keepdim=True)
@@ -396,7 +404,7 @@ class MixedMSEPoweImbalanceV2(nn.Module):
     
     loss = alpha * mse_loss + (1-alpha) * power_imbalance_loss
     """
-    def __init__(self, alpha=0.5, tau=0.020, reduction='mean', noramlize=True):
+    def __init__(self, alpha=0.5, tau=0.020, reduction='mean', noramlize=True, split_real_imag=False):
         super().__init__()
         assert alpha <= 1. and alpha >= 0
         self.power_imbalance = PowerImbalanceV2(reduction)
@@ -404,6 +412,18 @@ class MixedMSEPoweImbalanceV2(nn.Module):
         self.alpha = alpha
         self.tau = tau
         self.normalize = noramlize
+        self.split_real_imag = split_real_imag
+        
+    def _split_real_imag(self, source, target):
+        if not self.split_real_imag:
+            return source, target
+        source_vm, source_va = source[:, 0:1], source[:, 1:2]
+        source_vreal, source_vimag = source_vm * torch.cos(source_va), source_vm * torch.sin(source_va)
+        target_vm, target_va = target[:, 0:1], target[:, 1:2]
+        target_vreal, target_vimag = target_vm * torch.cos(target_va), target_vm * torch.sin(target_va)
+        source = torch.cat([source_vreal, source_vimag, source[:, 2:4]], dim=-1)
+        target = torch.cat([target_vreal, target_vimag, target[:, 2:4]], dim=-1)
+        return source, target
         
     def _normalize(self, source, target):
         " target shape: (N, 4) "

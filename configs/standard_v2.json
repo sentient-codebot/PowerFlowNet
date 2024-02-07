@@ -1,5 +1,6 @@
 {
-    "data_dir": "data/power_flow_dataset/",
+    "data_dir":     "data/power_flow_dataset/",
+    "model":        "MaskEmbdMultiMPN",
     "nfeature_dim": 4,
     "efeature_dim": 2,
     "output_dim":   4,
