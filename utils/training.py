@@ -110,6 +110,7 @@ def train_epoch(
                             'PowerImbalance': mixed_loss_terms['physical'].mean().item(),
                         },
                         'Epoch': epoch,
+                        'Train Step': train_step
                     }, step=train_step)
             else:
                 print('invalid loss function')
