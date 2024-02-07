@@ -288,6 +288,7 @@ def create_batch_dp(dp: IterDataPipe, batch_size: int) -> IterDataPipe:
     dp = dp.shuffle(buffer_size=500)
     dp = dp.batch(batch_size)
     dp = dp.collate(collate_fn=collate_fn) # collate_fn? 
+    dp = dp.sharding_filter() # allows duplicating dp for multiple workers. skipping this will cause issues
     
     return dp
 

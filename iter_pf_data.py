@@ -9,24 +9,19 @@ from datasets.power_flow_data import create_pf_dp, create_batch_dp
 def main():
     dp = create_pf_dp(
         root = 'data/power_flow_dataset/',
-        case = '6470rte',
+        case = '118',
         task = 'train',
         fill_noise = True,
     )
-    batch_dp = create_batch_dp(dp, batch_size=128)
+    batch_dp = create_batch_dp(dp, batch_size=2)
     
-    num_batch = 0
-    for batch in tqdm(batch_dp):
-        num_batch += 1
-        
-    print(f"Number of batches: {num_batch}")
-    exit()
-        
-    
-    rs = MultiProcessingReadingService(num_workers=2)
+    rs = MultiProcessingReadingService(num_workers=4)
     dl = DataLoader2(batch_dp, reading_service=rs)
     it = iter(dl)
-    batch = next(it)
+    num_batches = 0
+    for batch in tqdm(it):
+        print(type(batch))
+    print(f'num_batches: {num_batches}')
     pass
     
 if __name__ == '__main__':
