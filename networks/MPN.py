@@ -752,8 +752,18 @@ class MaskEmbdMultiMPNV2(nn.Module):
 
         for l in range(n_gnn_layers-2):
             self.mid_layers.append(nn.ModuleDict({
-                'ln1': nn.LayerNorm(hidden_dim),
-                'ln2': nn.LayerNorm(hidden_dim),
+                'bus_modulation_1': nn.Sequential(
+                    nn.Linear(in_channels_node, hidden_dim),
+                    nn.SiLU(),
+                    nn.Linear(hidden_dim, 2*hidden_dim)
+                ),
+                'bus_modulation_2': nn.Sequential(
+                    nn.Linear(in_channels_node, hidden_dim),
+                    nn.SiLU(),
+                    nn.Linear(hidden_dim, 2*hidden_dim)
+                ),
+                'ln1': nn.LayerNorm(hidden_dim, elementwise_affine=False),
+                'ln2': nn.LayerNorm(hidden_dim, elementwise_affine=False),
                 'mp': EdgeAggregation(hidden_dim, in_channels_edge, hidden_dim, hidden_dim),
                 'conv': TAGConv(hidden_dim, hidden_dim, K=K),
                 'mlp': nn.Sequential(
@@ -821,12 +831,17 @@ class MaskEmbdMultiMPNV2(nn.Module):
             mlp = layer['mlp']
             x_copy = x
             x = ln1(x) # shape (B*N, hidden_dim)
+            scale, shift = layer['bus_modulation_1'](encoded_bus_type).chunk(2, dim=-1)
+            x = x * (1.+scale) + shift
             x = mp(x=x, edge_index=edge_index, edge_attr=edge_features)
             x = nn.SiLU()(x)
             x = conv(x=x, edge_index=edge_index)
             x = x + x_copy
             x_copy = x
-            x = mlp(ln2(x)) + x_copy
+            x = ln2(x)
+            scale, shift = layer['bus_modulation_2'](encoded_bus_type).chunk(2, dim=-1)
+            x = x * (1.+scale) + shift
+            x = mlp(x) + x_copy
             x = nn.Dropout(self.dropout_rate)(x)
         
         # final message passing
