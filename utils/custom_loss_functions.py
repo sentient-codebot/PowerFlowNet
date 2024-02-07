@@ -64,8 +64,12 @@ class Masked_L2_loss(nn.Module):
         
         loss_terms = {}
         loss_terms['total'] = error.mean()
-        loss_terms['vm'] = error[0]
-        loss_terms['va'] = error[1]
+        if self.split_real_imag:
+            loss_terms['vreal'] = error[0]
+            loss_terms['vimag'] = error[1]
+        else:
+            loss_terms['vm'] = error[0]
+            loss_terms['va'] = error[1]
         loss_terms['p'] = error[2]
         loss_terms['q'] = error[3]
 
