@@ -93,9 +93,9 @@ def main():
     
     print(f"#Samples: training {len(train_dp)}, validation {len(val_dp)}, test {len(test_dp)}")
     
-    train_loader = create_dataloader(create_batch_dp(train_dp, batch_size), num_workers=8, shuffle=True)
-    val_loader = create_dataloader(create_batch_dp(val_dp, batch_size), num_workers=8, shuffle=False)
-    test_loader = create_dataloader(create_batch_dp(test_dp, batch_size), num_workers=8, shuffle=False)
+    train_loader = create_dataloader(create_batch_dp(train_dp, batch_size), num_workers=1, shuffle=True)
+    val_loader = create_dataloader(create_batch_dp(val_dp, batch_size), num_workers=1, shuffle=False)
+    test_loader = create_dataloader(create_batch_dp(test_dp, batch_size), num_workers=1, shuffle=False)
     
     ## [Optional] physics-informed loss function
     if args.train_loss_fn == 'power_imbalance':
