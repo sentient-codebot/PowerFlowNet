@@ -901,11 +901,12 @@ class MultiGCNBlock(nn.Module):
     """
     def __init__(self, in_channels_node, in_channels_edge, out_channels_node, hidden_dim,
                  dict_gcn_params):
+        super().__init__()
         self.in_channels_node = in_channels_node
         self.in_channels_edge = in_channels_edge
         self.out_channels_node = out_channels_node
         self.hidden_dim = hidden_dim
-        self.dict_gcn_params
+        self.dict_gcn_params = dict_gcn_params
         self.dict_gcn = nn.ModuleDict()
         for name, params in dict_gcn_params.items():
             self.dict_gcn[name] = nn.ModuleDict()
