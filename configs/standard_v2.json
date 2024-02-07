@@ -11,5 +11,7 @@
     "num_epochs":   200,
     "batch_size":   128,
     "lr":           0.001,
+    "alpha":        0.995,
+    "tau":          0.01,
     "wandb":        true  
 }
