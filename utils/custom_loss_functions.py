@@ -64,6 +64,7 @@ class Masked_L2_loss(nn.Module):
             output = (output - target_mean) / target_std
             target = (target - target_mean) / target_std
 
+        # TODO mask should be different for vreal and vimag
         error = self.mse(output, target) # (N, 4)
         error = (error * mask).sum(dim=0) / mask.sum(dim=0) # (4,)
         
