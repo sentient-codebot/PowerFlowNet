@@ -140,11 +140,12 @@ def main():
     # data = next(iter(create_batch_dp(train_dp, 1)))
     # losses = eval_loss_fn(data.y, data.edge_index, data.edge_attr, data.y)
     # exit()
+    train_step = 0
     for epoch in range(num_epochs):
         print('Epoch:', epoch+1, '/', num_epochs)
-        train_losses = train_epoch(
+        train_losses, train_step = train_epoch(
             model, train_loader, loss_fn, optimizer, device, 
-            total_length=len(train_dp)//batch_size, batch_size=batch_size)
+            total_length=len(train_dp)//batch_size, batch_size=batch_size, log_to_wandb=log_to_wandb, epoch=epoch, train_step=train_step)
         
         val_losses = evaluate_epoch(model, val_loader, eval_loss_fn, device, 
                                     total_length=len(val_dp)//batch_size, batch_size=batch_size)
@@ -156,8 +157,9 @@ def main():
         train_log['val']['loss'].append(val_loss)
 
         if log_to_wandb:
-            wandb.log({'train_loss': train_losses,
-                      'val_loss': val_losses}, step=epoch)
+            wandb.log({'Epoch Train': train_losses,
+                      'Epoch Validation': val_losses,
+                      }, step = train_step)
 
         if train_loss < best_train_loss:
             best_train_loss = train_loss

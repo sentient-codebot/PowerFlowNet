@@ -1,6 +1,7 @@
 from typing import Callable, Optional, List, Tuple, Union
 import os
 import json
+from copy import deepcopy
 
 import torch
 from torch_geometric.loader import DataLoader
@@ -8,6 +9,7 @@ from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 import torch.nn as nn
 from tqdm import tqdm
+import wandb
 
 from utils.custom_loss_functions import Masked_L2_loss, PowerImbalanceV2, MixedMSEPoweImbalanceV2, get_mask_from_bus_type
 
@@ -35,6 +37,9 @@ def train_epoch(
     device: torch.device,
     total_length: int = 100000,
     batch_size: int = 128,
+    log_to_wandb: bool = False,
+    epoch: int = 0,
+    train_step: int = 0,
 ) -> float:
     """
     Trains a neural network model for one epoch using the specified data loader and optimizer.
@@ -89,6 +94,20 @@ def train_epoch(
             loss.backward()
             optimizer.step()
             num_samples += batch_size
+            
+            if log_to_wandb:
+                _log_train_losses = {}
+                for loss_type, loss_terms in train_losses.items():
+                    _log_train_losses[loss_type] = {}
+                    for k, v in loss_terms.items():
+                        _log_train_losses[loss_type][k] = v / num_samples
+                _log_train_losses['train_loss'] = loss.item()
+                wandb.log({
+                    'Train': _log_train_losses,
+                    'Epoch': epoch,
+                    'Train Step': train_step
+                }, step=train_step)
+            train_step += 1
             pbar.set_description(f'train loss: {loss.item():.4f}')
             pbar.update(1)
     
@@ -96,7 +115,7 @@ def train_epoch(
         for kk, vv in v.items():
             train_losses[k][kk] = vv / num_samples
 
-    return train_losses
+    return train_losses, train_step
 
 
 def main():
