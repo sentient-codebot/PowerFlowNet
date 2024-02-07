@@ -243,7 +243,8 @@ def create_pf_dp(
     root: str,
     case: str,
     task: str,
-    fill_noise: bool
+    fill_noise: bool,
+    total_samples: int = 50000,
 ) -> IterDataPipe:
     """
     process: 
@@ -254,7 +255,7 @@ def create_pf_dp(
         - merge two dp into one that creates Data with node and edges
     """
     # dataset specific constants
-    total_samples = 50000
+    total_samples = total_samples
     split = [0.5, 0.2, 0.3]
     split_indices = {
         'train': list(range(int(total_samples*split[0]))),
@@ -267,11 +268,12 @@ def create_pf_dp(
     # node and edge file list
     node_files = get_filelist(os.path.join(root, 'raw'), 'node_features', case, split_indices[task])
     edge_files = get_filelist(os.path.join(root, 'raw'), 'edge_features', case, split_indices[task])
+    sn_mva_files = get_filelist(os.path.join(root, 'raw'), 'sn_mva', case, split_indices[task])
     node_files, edge_files = get_existing_node_edge(node_files, edge_files)
         
     # load node and edge together
     dp = pipes.IterableWrapper(
-        zip(node_files, edge_files),
+        zip(node_files, edge_files, sn_mva_files),
     )
     dp = dp.read_pf_data(length=len(node_files)) # (node_array [N, 6], edge_array [E, 4])
     dp = dp.create_geometric_data(fill_noise=fill_noise) 

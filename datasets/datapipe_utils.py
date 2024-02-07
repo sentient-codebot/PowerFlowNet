@@ -88,7 +88,7 @@ class ReadEdgeFeatures(IterDataPipe):
         
 @functional_datapipe('read_pf_data')
 class ReadPFData(IterDataPipe):
-    " source_dp: a datapipe that yields a 2-tuple [node_path, edge_path] of csv paths"
+    " source_dp: a datapipe that yields a 2-tuple [node_path, edge_path] of csv paths. NOTE: PQ ARE IN MW/MVAR"
     def __init__(self, source_dp, length=25000):
         super().__init__()
         self.dp = source_dp
@@ -106,18 +106,21 @@ class ReadPFData(IterDataPipe):
             ('r', np.float32),
             ('x', np.float32),
         ])
+        self.sn_mva_dtype = float
         self.length = length
         
     def __len__(self):
         return self.length
         
     def __iter__(self):
-        for node_path, edge_path in self.dp:
+        for node_path, edge_path, sn_mva_path in self.dp:
+            with open(sn_mva_path, 'r') as f:
+                sn_mva = np.loadtxt(f, delimiter=',', dtype=self.sn_mva_dtype, comments=None, skiprows=1)
             with open(node_path, 'r') as f:
                 node_array = np.loadtxt(f, delimiter=',', dtype=self.node_dtype, comments=None, skiprows=1)
             with open(edge_path, 'r') as f:
                 edge_array = np.loadtxt(f, delimiter=',', dtype=self.edge_dtype, comments=None, skiprows=1)
-            yield node_array, edge_array
+            yield node_array, edge_array, sn_mva
             
 @functional_datapipe('create_geometric_data')
 class CreateGeometricData(IterDataPipe):
@@ -147,14 +150,14 @@ class CreateGeometricData(IterDataPipe):
         return len(self.dp)
         
     def __iter__(self):
-        for node_array, edge_array in self.dp:
+        for node_array, edge_array, sn_mva in self.dp:
             bus_type = torch.from_numpy(node_array['type'].astype(np.int64)).view(-1, 1) # shape: (N, 1)
             y = torch.from_numpy(
                 np.stack([
                     node_array['vm'].astype(np.float32),
                     node_array['va'].astype(np.float32),
-                    node_array['p'].astype(np.float32),
-                    node_array['q'].astype(np.float32),
+                    node_array['p'].astype(np.float32) / sn_mva,
+                    node_array['q'].astype(np.float32) / sn_mva,
                 ], axis=1)
             ) # shape: (N, 4)
             is_slack = (bus_type == 0)

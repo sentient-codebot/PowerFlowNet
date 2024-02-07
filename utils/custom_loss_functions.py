@@ -260,8 +260,6 @@ class PowerImbalanceV2(MessagePassing):
         - where edges are obtained from the nodal admittance matrix `Ybus`.
 
     Arguments:
-        xymean: mean of the node features
-        xy_std: standard deviation of the node features
         reduction: (str) 'sum' or 'mean' (node/batch-wise). P and Q are always added. 
         
     Input:
@@ -319,58 +317,20 @@ class PowerImbalanceV2(MessagePassing):
         Return:
             Pji|Qji: (num_edges, 2)
         """
-        r_x = edge_attr # (num_edges, 2)
-        r, x = r_x[:, 0:1], r_x[:, 1:2]
-        # zm_ij = torch.norm(r_x, p=2, dim=-1, keepdim=True) # (num_edges, 1) NOTE (r**2+x**2)**0.5 should be non-zero
-        # za_ij = torch.acos(edge_attr[:, 0:1] / zm_ij) # (num_edges, 1)
-        # ym_ij = 1/(zm_ij + 1e-6)        # (num_edges, 1)
-        # ya_ij = -za_ij      # (num_edges, 1)    
-        # g_ij = ym_ij * torch.cos(ya_ij) # (num_edges, 1)
-        # b_ij = ym_ij * torch.sin(ya_ij) # (num_edges, 1)
-        g_ij = r / (r**2 + x**2)
-        b_ij = -x / (r**2 + x**2)
-        ym_ij = torch.sqrt(g_ij**2+b_ij**2)
-        ya_ij = torch.acos(g_ij/ym_ij)
+        g_ij = edge_attr[:, 0:1] # (num_edges, 1)
+        b_ij = edge_attr[:, 1:2] # (num_edges, 1)
         vm_i = x_i[:, 0:1] # (num_edges, 1)
         va_i = 1/180.*torch.pi*x_i[:, 1:2] # (num_edges, 1)
-        vm_j = x_j[:, 0:1] # (num_edges, 1)
-        va_j = 1/180.*torch.pi*x_j[:, 1:2] # (num_edges, 1)
-        e_i = vm_i * torch.cos(va_i)
-        f_i = vm_i * torch.sin(va_i)
-        e_j = vm_j * torch.cos(va_j)
-        f_j = vm_j * torch.sin(va_j)
+        vm_j = x_j[:, 0:1]
+        va_j = 1/180.*torch.pi*x_j[:, 1:2]
         
-        ####### my (incomplete) method #######
-        # Pji = vm_i * vm_j * ym_ij * torch.cos(va_i - va_j - ya_ij) \
-        #         - vm_i**2 * ym_ij * torch.cos(-ya_ij)
-        # Qji = vm_i * vm_j * ym_ij * torch.sin(va_i - va_j - ya_ij) \
-        #         - vm_i**2 * ym_ij * torch.sin(-ya_ij)
+        Pij = vm_i*vm_j*(torch.cos(va_i - va_j)*g_ij + torch.sin(va_i - va_j)*b_ij) # (num_edges, 1)
+        Qij = vm_i*vm_j*(torch.sin(va_i - va_j)*g_ij - torch.cos(va_i - va_j)*b_ij) # (num_edges, 1)
         
-        ####### standard method #######
-        # cannot be done since there's not complete information about whole neighborhood. 
+        return torch.cat([Pij, Qij], dim=-1) # (num_edges, 2)
         
-        ####### another reference method #######
-        # Pji = vm_i * vm_j * (g_ij*torch.cos(va_i-va_j)+b_ij*torch.sin(va_i-va_j))
-        # Qji = vm_i * vm_j * (g_ij*torch.sin(va_i-va_j)-b_ij*torch.cos(va_i-va_j))
-        
-        ####### reference method 3 #######
-        # Pji = g_ij*(vm_i**2 - vm_i*vm_j*torch.cos(va_i-va_j)) \
-        #     - b_ij*(vm_i*vm_j*torch.sin(va_i-va_j))
-        # Qji = b_ij*(- vm_i**2 + vm_i*vm_j*torch.cos(va_i-va_j)) \
-        #     - g_ij*(vm_i*vm_j*torch.sin(va_i-va_j))
-            
-        ###### another mine ######
-        Pji = g_ij*(e_i*e_j-e_i**2+f_i*f_j-f_i**2) + b_ij*(f_i*e_j-e_i*f_j)
-        Qji = g_ij*(f_i*e_j-e_i*f_j) + b_ij*(-e_i*e_j+e_i**2-f_i*f_j+f_i**2)
-        
-        # --- DEBUG ---
-        # self._dPQ = torch.cat([Pji, Qji], dim=-1) # (num_edges, 2)
-        # --- DEBUG ---
-        
-        return torch.cat([Pji, Qji], dim=-1) # (num_edges, 2)
-    
     def update(self, aggregated, x):
-        """calculate power imbalance at each node
+        r"""calculate power imbalance at each node
 
         Arguments:
             aggregated -- output of aggregation,    (num_nodes, 2)
@@ -384,18 +344,13 @@ class PowerImbalanceV2(MessagePassing):
             \Delta P_i = \sum_{j\in N_i} P_{ji} - P_{ij}
         $$
         """
-        # TODO check if the aggregated result is correct
-        
-        # --- DEBUG ---
-        # self.node_dPQ = self._is_i.float() @ self._dPQ # correct, gecontroleerd.
-        # --- DEBUG ---
-        dPi = - aggregated[:, 0:1] + x[:, 2:3] # (num_nodes, 1)
-        dQi = - aggregated[:, 1:2] + x[:, 3:4] # (num_nodes, 1)
+        dPi = aggregated[:, 0:1] + x[:, 2:3] # (num_nodes, 1)
+        dQi = aggregated[:, 1:2] + x[:, 3:4] # (num_nodes, 1)
 
         return torch.cat([dPi, dQi], dim=-1) # (num_nodes, 2)
         
     def forward(self, x, edge_index, edge_attr):
-        """calculate power imbalance at each node
+        r"""calculate power imbalance at each node
 
         Arguments:
             x -- _description_
@@ -410,18 +365,6 @@ class PowerImbalanceV2(MessagePassing):
             \Delta P_i = \sum_{j\in N_i} P_{ji} - P_{ij}
         $$
         """
-        # make graph undirected. shouldn't need it anymore. 
-        # if self.is_directed(edge_index):
-        #     edge_index, edge_attr = self.undirect_graph(edge_index, edge_attr)
-        
-        # --- per unit --- 
-        # edge_attr[:, 0:2] = edge_attr[:, 0:2]/self.base_ohm
-        # x[:, 2:4] = x[:, 2:4]/self.base_sn
-        # --- DEBUG ---
-        # self._edge_index = edge_index
-        # self._is_i = torch.arange(14).view((14,1)).expand((14, 20)).long() == edge_index[0:1,:]
-        # self._is_j = torch.arange(14).view((14,1)).expand((14, 20)).long() == edge_index[1:2,:]
-        # --- DEBUG ---        
         dPQ = self.propagate(edge_index, x=x, edge_attr=edge_attr) # (num_nodes, 2)
         dPQ = dPQ.square().sum(dim=-1) # (num_nodes,)
         mean_dPQ = dPQ.mean()
