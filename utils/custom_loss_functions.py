@@ -444,7 +444,7 @@ class MixedMSEPoweImbalanceV2(nn.Module):
     def forward(self, x, edge_index, edge_attr, y):
         loss_terms = {}
         power_imb_loss = self.power_imbalance(x, edge_index, edge_attr)
-        mse_loss = self.mse_loss_fn(*self._normalize(x, y))
+        mse_loss = self.mse_loss_fn(*self._normalize(self._split_real_imag(x, y)))
         loss = self.alpha * mse_loss + (1-self.alpha) * self.tau*power_imb_loss
         loss_terms['physical'] = power_imb_loss
         loss_terms['mse'] = mse_loss
