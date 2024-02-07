@@ -62,7 +62,7 @@ def train_epoch(
         'PowerImbalance': {},
         'MSE': {},
     }
-    with tqdm(initial=1, total=total_length) as pbar:
+    with tqdm(initial=1, total=total_length+1) as pbar:
         for data in loader:
             data = data.to(device)
             optimizer.zero_grad()

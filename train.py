@@ -1,6 +1,7 @@
 from datetime import datetime
 import os
 import random
+import math
 
 import numpy as np
 import torch
@@ -152,7 +153,7 @@ def main():
             loss_fn, 
             optimizer, 
             device, 
-            total_length=len(train_dp)//batch_size, 
+            total_length=math.ceil(len(train_dp)/batch_size), 
             batch_size=batch_size, 
             log_to_wandb=log_to_wandb, 
             epoch=epoch, 
@@ -164,7 +165,8 @@ def main():
             val_loader, 
             eval_loss_fn, 
             device, 
-            total_length=len(val_dp)//batch_size, batch_size=batch_size
+            total_length=math.ceil(len(val_dp)/batch_size), 
+            batch_size=batch_size
         )
         
         train_loss = train_losses['PowerImbalance']['total'] if isinstance(loss_fn, PowerImbalanceV2) else train_losses['MaskedL2']['total']
