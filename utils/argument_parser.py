@@ -49,6 +49,8 @@ def argument_parser():
                         help='Training loss function')
     parser.add_argument('--num_epochs', type=int, default=100, help='Number of epochs to train for')
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
+    parser.add_argument('--alpha', type=float, default=0.995, help='Alpha for mixed loss')
+    parser.add_argument('--tau', type=float, default=0.01, help='Tau for mixed loss')
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--case', type=str, default='14', help='Grid case')
     parser.add_argument('--wandb', default=False, type=str2bool, help='Enable wandb logging')
