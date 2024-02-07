@@ -48,6 +48,8 @@ class Masked_L2_loss(nn.Module):
 
     def forward(self, output, target, mask):
         " target shape (N, 4) "
+        output[:,1] = output[:,1] % 360.
+        target[:,1] = target[:,1] % 360.
         if self.split_real_imag:
             output_vm, output_va = output[:, 0:1], output[:, 1:2]
             output_vreal, output_vimag = output_vm * torch.cos(output_va), output_vm * torch.sin(output_va)
@@ -442,6 +444,8 @@ class MixedMSEPoweImbalanceV2(nn.Module):
         return source, target
     
     def forward(self, x, edge_index, edge_attr, y):
+        x[:, 1] = x[:, 1] % 360.
+        y[:, 1] = y[:, 1] % 360.
         loss_terms = {}
         power_imb_loss = self.power_imbalance(x, edge_index, edge_attr)
         mse_loss = self.mse_loss_fn(*self._normalize(self._split_real_imag(x, y)))
