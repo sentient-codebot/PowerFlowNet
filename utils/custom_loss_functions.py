@@ -4,7 +4,9 @@ from torchvision import datasets, transforms
 from torch import nn
 import torch.nn.functional as F
 from torch_geometric.nn import MessagePassing
-import networkx
+import networkx as nx
+
+from networks.MPN import copy_one_way_edges
 
 def get_mask_from_bus_type(bus_type) -> torch.Tensor:
     "bus_type: [N, 1]. mask_value = 1 if need to predict, 0 if not."
@@ -282,7 +284,7 @@ class PowerImbalanceV2(MessagePassing):
     def __init__(self, reduction='mean'):
         super().__init__(aggr='add', flow='target_to_source')
     
-    def is_directed(self, edge_index):
+    def _is_one_way(self, edge_index):
         'determine if a graph id directed by reading only one edge'
         return edge_index[0,0] not in edge_index[1,edge_index[0,:] == edge_index[1,0]]
     
@@ -377,6 +379,7 @@ class PowerImbalanceV2(MessagePassing):
             \Delta P_i = \sum_{j\in N_i} P_{ji} - P_{ij}
         $$
         """
+        edge_index, edge_attr = copy_one_way_edges(edge_index, edge_attr)
         dPQ = self.propagate(edge_index, x=x, edge_attr=edge_attr) # (num_nodes, 2)
         dPQ = dPQ.square().sum(dim=-1) # (num_nodes,)
         mean_dPQ = dPQ.mean()

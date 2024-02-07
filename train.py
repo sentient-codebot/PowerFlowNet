@@ -84,7 +84,7 @@ def main():
     test_dp = create_pf_dp(data_dir, grid_case, 'test', False, 50000)
     
     if len(train_dp) == 0 or len(val_dp) == 0 or len(test_dp) == 0:
-        raise ValueError("No data found. Please check the data directory and the case name.")
+        print("No enough data found for all three tasks. Please check the data directory and the case name.")
     
     print(f"#Samples: training {len(train_dp)}, validation {len(val_dp)}, test {len(test_dp)}")
     
@@ -136,9 +136,9 @@ def main():
             'loss': []},
     }
     # pbar = tqdm(range(num_epochs), total=num_epochs, position=0, leave=True)
-    # data = next(iter(create_batch_dp(train_dp, 1)))
-    # losses = eval_loss_fn(data.y, data.edge_index, data.edge_attr, data.y)
-    # exit()
+    data = next(iter(create_batch_dp(train_dp, 1)))
+    losses = eval_loss_fn(data.y, data.edge_index, data.edge_attr, data.y)
+    exit()
     for epoch in range(num_epochs):
         print('Epoch:', epoch+1, '/', num_epochs)
         train_losses = train_epoch(

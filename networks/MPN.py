@@ -7,6 +7,23 @@ from torch import Tensor
 from torch_geometric.nn import MessagePassing, TAGConv, GCNConv, ChebConv
 from torch_geometric.utils import degree
 
+def copy_one_way_edges(edge_index, edge_attr):
+    edge_index_reverse = torch.stack(
+        [edge_index[1,:], edge_index[0,:]],
+        dim = 0
+    )   # (2, E)
+    edge_index_reverse = edge_index_reverse[:, edge_index[0,:] != edge_index[1,:]] # remove self-loops, (2, E-N)
+    edge_attr_reverse = edge_attr[edge_index[0,:] != edge_index[1,:]] # (E-N, 2)
+    modified_edge_index = torch.cat(
+        [edge_index, edge_index_reverse],
+        dim = 1
+    ) # (2, 2*E-N)
+    modified_edge_attr = torch.cat(
+        [edge_attr, edge_attr_reverse],
+        dim = 0
+    ) # (2*E-N, 2)
+    return modified_edge_index, modified_edge_attr
+
 class EdgeAggregation(MessagePassing):
     """MessagePassing for aggregating edge features
 
@@ -40,8 +57,8 @@ class EdgeAggregation(MessagePassing):
         output:
             out:        shape (N, num_nodes, output_dim,)
         '''
-        # Step 1: Add self-loops to the adjacency matrix.
-        # edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0)) # no self loop because NO EDGE ATTR FOR SELF LOOP
+        # Step 1: Add edges in reverse direction to allow two-way message passing
+        edge_index, edge_attr = copy_one_way_edges(edge_index, edge_attr)
         
         # Step 2: Calculate the degree of each node.
         row, col = edge_index
