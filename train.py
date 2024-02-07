@@ -98,7 +98,7 @@ def main():
         loss_fn = PowerImbalanceV2().to(device)
     elif args.train_loss_fn == 'masked_l2':
         loss_fn = Masked_L2_loss(regularize=args.regularize, regcoeff=args.regularization_coeff)
-    elif args.train_loss_fn == 'mixed_mse_power_imbalance':
+    elif args.train_loss_fn == 'mixed_mse_power_imbalance' or args.train_loss_fn == 'mixed':
         loss_fn = MixedMSEPoweImbalanceV2(alpha=0.9, tau=0.020, noramlize=True).to(device)
     else:
         loss_fn = torch.nn.MSELoss()
@@ -156,7 +156,7 @@ def main():
 
         if log_to_wandb:
             wandb.log({'train_loss': train_losses,
-                      'val_loss': val_loss}, step=epoch)
+                      'val_loss': val_losses}, step=epoch)
 
         if train_loss < best_train_loss:
             best_train_loss = train_loss

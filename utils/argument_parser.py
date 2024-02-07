@@ -45,7 +45,7 @@ def argument_parser():
     parser.add_argument('--disable_normalize', default=False, action=argparse.BooleanOptionalAction, help='Disable normalizing data')
     parser.add_argument('--train_loss_fn', 
                         type=str, default='masked_l2', 
-                        choices=['masked_l2', 'power_imbalance', 'mse_loss', 'mixed_mse_power_imbalance'],
+                        choices=['masked_l2', 'power_imbalance', 'mse_loss', 'mixed_mse_power_imbalance', 'mixed'],
                         help='Training loss function')
     parser.add_argument('--num_epochs', type=int, default=100, help='Number of epochs to train for')
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
