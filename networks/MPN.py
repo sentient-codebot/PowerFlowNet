@@ -809,7 +809,7 @@ class MaskEmbdMultiMPNV2(nn.Module):
         x = self.init_conv['mp'](x, edge_index, edge_features)
         x = self.init_conv['conv'](x, edge_index)
         
-        # make graph undirected -> shouldn't need it now in the data gen v3
+        # make graph undirected -> edge aggr does this internally
         # edge_index, edge_features = self.undirect_graph(edge_index, edge_features)
 
         # message passing and conv
@@ -831,5 +831,186 @@ class MaskEmbdMultiMPNV2(nn.Module):
         
         # final message passing
         x = self.final_mp(x, edge_index, edge_features)
+        
+        return x
+    
+class EdgeAggregationV2(MessagePassing):
+    """MessagePassing for aggregating edge features 
+    
+    version 2: transforms the edge features before creating message
+
+    """
+    def __init__(self, nfeature_dim, efeature_dim, hidden_dim, output_dim):
+        super().__init__(aggr='add')
+        self.nfeature_dim = nfeature_dim
+        self.efeature_dim = efeature_dim
+        self.output_dim = output_dim
+        
+        self.edge_transformation = nn.Sequential(
+            nn.Linear(efeature_dim, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, hidden_dim)
+        ) # (E, Fe) -> (E, hidden_dim)
+        self.edge_aggr = nn.Sequential(
+            nn.Linear(nfeature_dim*2 + hidden_dim, 4*hidden_dim),
+            nn.SiLU(),
+            nn.Linear(4*hidden_dim, output_dim)
+        )
+        
+    def message(self, x_i, x_j, edge_attr):
+        '''
+        x_j:        shape (N, nfeature_dim,)
+        edge_attr:  shape (N, efeature_dim,)
+        '''
+        return self.edge_aggr(torch.cat([x_i, x_j, edge_attr], dim=-1)) # PNAConv style
+    
+    def forward(self, x, edge_index, edge_attr):
+        '''
+        input:
+            x:          shape (N, num_nodes, nfeature_dim,)
+            edge_attr:  shape (N, num_edges, efeature_dim,)
+            
+        output:
+            out:        shape (N, num_nodes, output_dim,)
+        '''
+        # Step 1: Add edges in reverse direction to allow two-way message passing
+        edge_index, edge_attr = copy_one_way_edges(edge_index, edge_attr)
+        
+        # Step 2: Calculate the degree of each node.
+        row, col = edge_index
+        deg = degree(col, x.size(0), dtype=x.dtype)
+        deg_inv_sqrt = deg.pow(-0.5)
+        deg_inv_sqrt[deg_inv_sqrt == float('inf')] = 0.
+        norm = deg_inv_sqrt[row] * deg_inv_sqrt[col] 
+        
+        # Step 3: Edge transformation. 
+        edge_attr = self.edge_transformation(edge_attr) # (E, Fe) -> (E, hidden_dim)
+        
+        # Step 4: Propagation
+        out = self.propagate(x=x, edge_index=edge_index, edge_attr=edge_attr, norm=norm)
+        #   no bias here
+        
+        return out
+
+class MultiGCNBlock(nn.Module):
+    """building block for MultiGCN
+    
+    Arguments:
+        - dict_gcn_params: dictionary of parameters for each GCN layer
+        e.g. {'slack': {'K': 2}, 'pv': {'K': 4}, 'pq': {'K': 6}
+    """
+    def __init__(self, in_channels_node, in_channels_edge, out_channels_node, hidden_dim,
+                 dict_gcn_params):
+        self.in_channels_node = in_channels_node
+        self.in_channels_edge = in_channels_edge
+        self.out_channels_node = out_channels_node
+        self.hidden_dim = hidden_dim
+        self.dict_gcn_params
+        self.dict_gcn = nn.ModuleDict()
+        for name, params in dict_gcn_params.items():
+            self.dict_gcn[name] = nn.ModuleDict()
+            self.dict_gcn[name]['mp'] = EdgeAggregationV2(in_channels_node, in_channels_edge, hidden_dim, hidden_dim)
+            self.dict_gcn[name]['conv'] = TAGConv(hidden_dim, out_channels_node, K=params['K'])
+            
+    def forward(self, x, edge_index, edge_attr, bus_type):
+        """
+        Arguments:
+            - x: shape (N, in_channels_node,)
+            - edge_index: shape (2, E,)
+            - edge_attr: shape (E, in_channels_edge,)
+            - bus_type: shape (N, 1,)
+        """
+        out = {}
+        for name, module_dict in self.dict_gcn.items():
+            mp = module_dict['mp']
+            conv = module_dict['conv']
+            out[name] = conv(
+                x=nn.SiLU()(mp(x, edge_index, edge_attr)), 
+                edge_index=edge_index
+            )
+            
+        weighted_out = out['slack'] * (bus_type == 0) + out['pv'] * (bus_type == 1) + out['pq'] * (bus_type == 2)
+        return weighted_out
+
+class TypeSensitiveGCN(nn.Module):
+    """Use different GCN layers for different types of buses
+    Input:
+        - data (actually need only x and bus_type)
+    
+    Output:
+        - x (updated node features)
+    """
+    def __init__(
+        self, 
+        in_channels_node=4, 
+        in_channels_edge=2,
+        out_channels_node=4,
+        hidden_dim=128,
+        n_gnn_layers=5,
+        K=5,
+        dropout_rate=0.1
+    ):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.num_hidden_layers = n_gnn_layers
+        
+        self.init_ln = nn.LayerNorm(in_channels_node)
+        self.mid_layers = nn.ModuleList()
+
+        self.init_conv = nn.ModuleDict({
+            'mp': EdgeAggregationV2(in_channels_node, in_channels_edge, hidden_dim, hidden_dim),
+            'conv': TAGConv(hidden_dim, hidden_dim, K=5)
+        }) # out x shape (B*N, hidden_dim)
+
+        dict_gcn_params = {
+            'slack': {'K': 10},
+            'pv': {'K': 3},
+            'pq': {'K': 3}
+        }
+        for l in range(self.num_hidden_layers):
+            self.mid_layers.append(nn.ModuleDict({
+                'ln1': nn.LayerNorm(hidden_dim),
+                'ln2': nn.LayerNorm(hidden_dim),
+                'multigcn': MultiGCNBlock(hidden_dim, in_channels_edge, hidden_dim, hidden_dim, dict_gcn_params),
+                'mlp': nn.Sequential(
+                    nn.Linear(hidden_dim, 4*hidden_dim),
+                    nn.SiLU(),
+                    nn.Linear(4*hidden_dim, hidden_dim)
+                )
+            }))
+            
+        self.final_mp = EdgeAggregationV2(hidden_dim, in_channels_edge, hidden_dim, out_channels_node)
+        self.bus_type_encoder = BusTypeEncoder(3, in_channels_node) 
+        
+    def forward(self, data):
+        x = data.x
+        bus_type = data.bus_type
+        edge_index = data.edge_index
+        edge_attr = data.edge_attr
+        
+        # encode bus type
+        encoded_bus_type = self.bus_type_encoder(bus_type)
+        x = self.init_ln(x) + encoded_bus_type
+        
+        # init conv
+        x = self.init_conv['mp'](x, edge_index, edge_attr)
+        x = self.init_conv['conv'](x, edge_index)
+        
+        # mid layers
+        for layer in self.mid_layers:
+            multigcn = layer['multigcn']
+            mlp = layer['mlp']
+            ln1 = layer['ln1']
+            ln2 = layer['ln2']
+            x_copy = x
+            x = ln1(x)
+            x = multigcn(x, edge_index, edge_attr, bus_type)
+            x = x + x_copy
+            x_copy = x
+            x = mlp(ln2(x)) + x_copy
+            x = nn.Dropout(0.1)(x)
+            
+        # final conv
+        x = self.final_mp(x, edge_index, edge_attr)
         
         return x
