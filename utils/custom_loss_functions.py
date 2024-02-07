@@ -48,8 +48,9 @@ class Masked_L2_loss(nn.Module):
 
     def forward(self, output, target, mask):
         " target shape (N, 4) "
-        output[:,1] = output[:,1] % 360.
-        target[:,1] = target[:,1] % 360.
+        # maybe actually I can skip this. backward on real and imag part error is perhaps the key. 
+        # output = torch.stack([output[:,0], output[:, 1] % 360., output[:, 2], output[:, 3]], dim=-1)
+        # target = torch.stack([target[:,0], target[:, 1] % 360., target[:, 2], target[:, 3]], dim=-1)
         if self.split_real_imag:
             output_vm, output_va = output[:, 0:1], output[:, 1:2]
             output_vreal, output_vimag = output_vm * torch.cos(output_va), output_vm * torch.sin(output_va)
@@ -444,11 +445,11 @@ class MixedMSEPoweImbalanceV2(nn.Module):
         return source, target
     
     def forward(self, x, edge_index, edge_attr, y):
-        x[:, 1] = x[:, 1] % 360.
-        y[:, 1] = y[:, 1] % 360.
+        # x = torch.stack([x[:,0], x[:, 1] % 360., x[:, 2], x[:, 3]], dim=-1)
+        # y = torch.stack([y[:,0], y[:, 1] % 360., y[:, 2], y[:, 3]], dim=-1)
         loss_terms = {}
         power_imb_loss = self.power_imbalance(x, edge_index, edge_attr)
-        mse_loss = self.mse_loss_fn(*self._normalize(self._split_real_imag(x, y)))
+        mse_loss = self.mse_loss_fn(*self._normalize(*self._split_real_imag(x, y)))
         loss = self.alpha * mse_loss + (1-self.alpha) * self.tau*power_imb_loss
         loss_terms['physical'] = power_imb_loss
         loss_terms['mse'] = mse_loss
