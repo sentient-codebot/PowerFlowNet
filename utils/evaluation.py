@@ -78,7 +78,7 @@ def evaluate_epoch(
         'PowerImbalance': {'total': 0.},
         'MSE': {'total': 0.},
     }
-    pbar = tqdm(loader, total=316, desc='Evaluating:')
+    pbar = tqdm(loader, total=total_length, desc='Evaluating:')
     for data in pbar:
         data = data.to(device)
         out = model(data)

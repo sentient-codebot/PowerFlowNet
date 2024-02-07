@@ -62,7 +62,7 @@ def train_epoch(
         'PowerImbalance': {},
         'MSE': {},
     }
-    with tqdm(initial=1, total=785) as pbar:
+    with tqdm(initial=1, total=total_length) as pbar:
         for data in loader:
             data = data.to(device)
             optimizer.zero_grad()
@@ -108,7 +108,8 @@ def train_epoch(
                             'MaskedL2': {k: v.mean().item() for k, v in masked_l2_loss_terms.items()},
                             'MSE': mixed_loss_terms['mse'].mean().item(),
                             'PowerImbalance': mixed_loss_terms['physical'].mean().item(),
-                        }
+                        },
+                        'Epoch': epoch,
                     }, step=train_step)
             else:
                 print('invalid loss function')
