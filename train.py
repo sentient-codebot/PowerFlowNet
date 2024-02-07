@@ -42,7 +42,7 @@ def main():
     nomalize_data = not args.disable_normalize
     num_epochs = args.num_epochs
     loss_fn = Masked_L2_loss(regularize=args.regularize, regcoeff=args.regularization_coeff, normalize=True)
-    eval_loss_fn = MixedMSEPoweImbalanceV2(alpha=0.9, tau=0.020, noramlize=False)
+    eval_loss_fn = MixedMSEPoweImbalanceV2(alpha=0.9, tau=0.020, noramlize=False, split_real_imag=True)
     lr = args.lr
     batch_size = args.batch_size
     grid_case = args.case

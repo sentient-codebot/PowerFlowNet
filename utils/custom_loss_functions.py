@@ -421,9 +421,9 @@ class MixedMSEPoweImbalanceV2(nn.Module):
     def _split_real_imag(self, source, target):
         if not self.split_real_imag:
             return source, target
-        source_vm, source_va = source[:, 0:1], source[:, 1:2]
+        source_vm, source_va = source[:, 0:1], source[:, 1:2]/180.*torch.pi
         source_vreal, source_vimag = source_vm * torch.cos(source_va), source_vm * torch.sin(source_va)
-        target_vm, target_va = target[:, 0:1], target[:, 1:2]
+        target_vm, target_va = target[:, 0:1], target[:, 1:2]/180.*torch.pi
         target_vreal, target_vimag = target_vm * torch.cos(target_va), target_vm * torch.sin(target_va)
         source = torch.cat([source_vreal, source_vimag, source[:, 2:4]], dim=-1)
         target = torch.cat([target_vreal, target_vimag, target[:, 2:4]], dim=-1)
