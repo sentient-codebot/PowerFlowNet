@@ -6,6 +6,7 @@ import math
 import numpy as np
 import torch
 from torch_geometric.loader import DataLoader
+from accelerate import Accelerator
 
 from tqdm import tqdm
 
@@ -144,6 +145,10 @@ def main():
     # data = next(iter(create_batch_dp(train_dp, 1)))
     # losses = eval_loss_fn(data.y, data.edge_index, data.edge_attr, data.y)
     # exit()
+    accelerator = Accelerator()
+    model, optimizer, train_loader, val_loader, test_loader = accelerator.prepare(
+        model, optimizer, train_loader, val_loader, test_loader
+    )
     train_step = 0
     for epoch in range(num_epochs):
         print('Epoch:', epoch+1, '/', num_epochs)

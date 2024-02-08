@@ -816,8 +816,9 @@ class MaskEmbdMultiMPNV2(nn.Module):
         x = x + encoded_bus_type
         
         # init conv
+        x_copy = x
         x = self.init_conv['mp'](x, edge_index, edge_features)
-        x = self.init_conv['conv'](x, edge_index)
+        x = self.init_conv['conv'](x, edge_index) + x_copy
         
         # make graph undirected -> edge aggr does this internally
         # edge_index, edge_features = self.undirect_graph(edge_index, edge_features)
@@ -845,7 +846,7 @@ class MaskEmbdMultiMPNV2(nn.Module):
             x = nn.Dropout(self.dropout_rate)(x)
         
         # final message passing
-        x = self.final_mp(x, edge_index, edge_features)
+        x = x + self.final_mp(x, edge_index, edge_features)
         
         return x
     
