@@ -742,7 +742,7 @@ class MaskEmbdMultiMPNV2(nn.Module):
         self.K = K
         self.dropout_rate = dropout_rate
         
-        self.init_ln = nn.LayerNorm(in_channels_node)
+        self.init_groupnorm = nn.GroupNorm(in_channels_node, in_channels_node) # instance norm, norm in each channel individually
         self.mid_layers = nn.ModuleList()
 
         self.init_conv = nn.ModuleDict({
@@ -812,9 +812,9 @@ class MaskEmbdMultiMPNV2(nn.Module):
         
         # encode x with bus type
         encoded_bus_type = self.bus_type_encoder(bus_type) # shape (B*N, in_channels_node)
-        x = self.init_ln(x)
         x = x + encoded_bus_type
         x_init = x
+        x = self.init_groupnorm(x)
         
         # init conv
         x = self.init_conv['mp'](x, edge_index, edge_features)
