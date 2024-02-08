@@ -85,7 +85,7 @@ def main():
     # val_loader = DataLoader(valset, batch_size=batch_size, shuffle=False)
     # test_loader = DataLoader(testset, batch_size=batch_size, shuffle=False)
     
-    train_dp = create_pf_dp(data_dir, grid_case, 'train', True, 50000)
+    train_dp = create_pf_dp(data_dir, grid_case, 'train', False, 50000)
     val_dp = create_pf_dp(data_dir, grid_case, 'val', False, 50000)
     test_dp = create_pf_dp(data_dir, grid_case, 'test', False, 50000)
     
