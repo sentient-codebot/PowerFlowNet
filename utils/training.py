@@ -30,6 +30,7 @@ def append_to_json(log_path, run_id, result):
 
 
 def train_epoch(
+    accelerator,
     model: nn.Module,
     loader: torch.utils.data.DataLoader,
     loss_fn: Callable,
@@ -65,61 +66,65 @@ def train_epoch(
     with tqdm(initial=1, total=total_length+1) as pbar:
         for data in loader:
             data = data.to(device)
-            optimizer.zero_grad()
-            out = model(data)   # (N, 4)
-                                # data.y.shape == (N, 4)
+            with accelerator.autocast():
+                out = model(data)   # (N, 4)
+                                    # data.y.shape == (N, 4)
+                is_to_pred = get_mask_from_bus_type(data.bus_type) # 0, 1 mask of (N, 4). 1 is need to predict
+                if isinstance(loss_fn, Masked_L2_loss):
+                    loss_terms = loss_fn(out, data.y, is_to_pred)
+                    for k, v in loss_terms.items():
+                        train_losses['MaskedL2'][k] = train_losses['MaskedL2'].get(k, 0.) + v.mean().item() * batch_size
+                    loss = loss_terms['total']
+                    if log_to_wandb:
+                        wandb.log({
+                            'Train': {
+                                'train_loss': loss.item(),
+                                'MaskedL2': {
+                                    k: v.mean().item() for k, v in loss_terms.items()
+                                }
+                            },
+                            'Epoch': epoch,
+                            'Train Step': train_step
+                        }, step=train_step)
+                elif isinstance(loss_fn, PowerImbalanceV2):
+                    print('PowerImbalanceV2 deprecated. used mixed with w=0.')
+                    return 
+                    # masked_out = out * is_to_pred + data.x * (1 - is_to_pred) # (N, 4)
+                    # loss = loss_fn(masked_out, data.edge_index, data.edge_attr)
+                    # train_losses['PowerImbalance']['total'] = train_losses['PowerImbalance'].get('total', 0.) + loss.mean().item() * batch_size
+                elif isinstance(loss_fn, MixedMSEPoweImbalanceV2):
+                    mixed_loss_terms = loss_fn(out, data.edge_index, data.edge_attr, data.y)
+                    loss = mixed_loss_terms['loss']
+                    with torch.no_grad():
+                        masked_l2_loss_terms = Masked_L2_loss(normalize=False)(out, data.y, is_to_pred)
+                    for k, v in masked_l2_loss_terms.items():
+                        train_losses['MaskedL2'][k] = train_losses['MaskedL2'].get(k, 0.) + v.mean().item() * batch_size
+                    train_losses['MSE']['total'] = train_losses['MSE'].get('total', 0.) + mixed_loss_terms['mse'].mean().item() * batch_size
+                    train_losses['PowerImbalance']['total'] = train_losses['PowerImbalance'].get('total', 0.) + mixed_loss_terms['physical'].mean().item() * batch_size
+                    if log_to_wandb:
+                        wandb.log({
+                            'Train': {
+                                'train_loss': loss.item(),
+                                'MaskedL2': {k: v.mean().item() for k, v in masked_l2_loss_terms.items()},
+                                'MSE': mixed_loss_terms['mse'].mean().item(),
+                                'PowerImbalance': mixed_loss_terms['physical'].mean().item(),
+                            },
+                            'Epoch': epoch,
+                            'Train Step': train_step
+                        }, step=train_step)
+                else:
+                    print('invalid loss function')
+                    return
             
-            is_to_pred = get_mask_from_bus_type(data.bus_type) # 0, 1 mask of (N, 4). 1 is need to predict
-            if isinstance(loss_fn, Masked_L2_loss):
-                loss_terms = loss_fn(out, data.y, is_to_pred)
-                for k, v in loss_terms.items():
-                    train_losses['MaskedL2'][k] = train_losses['MaskedL2'].get(k, 0.) + v.mean().item() * batch_size
-                loss = loss_terms['total']
-                if log_to_wandb:
-                    wandb.log({
-                        'Train': {
-                            'train_loss': loss.item(),
-                            'MaskedL2': {
-                                k: v.mean().item() for k, v in loss_terms.items()
-                            }
-                        },
-                        'Epoch': epoch,
-                        'Train Step': train_step
-                    }, step=train_step)
-            elif isinstance(loss_fn, PowerImbalanceV2):
-                print('PowerImbalanceV2 deprecated. used mixed with w=0.')
-                return 
-                # masked_out = out * is_to_pred + data.x * (1 - is_to_pred) # (N, 4)
-                # loss = loss_fn(masked_out, data.edge_index, data.edge_attr)
-                # train_losses['PowerImbalance']['total'] = train_losses['PowerImbalance'].get('total', 0.) + loss.mean().item() * batch_size
-            elif isinstance(loss_fn, MixedMSEPoweImbalanceV2):
-                mixed_loss_terms = loss_fn(out, data.edge_index, data.edge_attr, data.y)
-                loss = mixed_loss_terms['loss']
-                with torch.no_grad():
-                    masked_l2_loss_terms = Masked_L2_loss(normalize=False)(out, data.y, is_to_pred)
-                for k, v in masked_l2_loss_terms.items():
-                    train_losses['MaskedL2'][k] = train_losses['MaskedL2'].get(k, 0.) + v.mean().item() * batch_size
-                train_losses['MSE']['total'] = train_losses['MSE'].get('total', 0.) + mixed_loss_terms['mse'].mean().item() * batch_size
-                train_losses['PowerImbalance']['total'] = train_losses['PowerImbalance'].get('total', 0.) + mixed_loss_terms['physical'].mean().item() * batch_size
-                if log_to_wandb:
-                    wandb.log({
-                        'Train': {
-                            'train_loss': loss.item(),
-                            'MaskedL2': {k: v.mean().item() for k, v in masked_l2_loss_terms.items()},
-                            'MSE': mixed_loss_terms['mse'].mean().item(),
-                            'PowerImbalance': mixed_loss_terms['physical'].mean().item(),
-                        },
-                        'Epoch': epoch,
-                        'Train Step': train_step
-                    }, step=train_step)
-            else:
-                print('invalid loss function')
-                return
-
-            loss.backward()
+            accelerator.backward(loss)
+            accelerator.clip_grad_norm_(model.parameters(), 1.)
+            
+            accelerator.wait_for_everyone()
             optimizer.step()
+            optimizer.zero_grad()
+            accelerator.wait_for_everyone()
+                
             num_samples += batch_size
-            
             train_step += 1
             pbar.set_description(f'train loss: {loss.item():.4f}')
             pbar.update(1)

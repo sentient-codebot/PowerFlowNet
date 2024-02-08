@@ -153,6 +153,7 @@ def main():
     for epoch in range(num_epochs):
         print('Epoch:', epoch+1, '/', num_epochs)
         train_losses, train_step = train_epoch(
+            accelerator,
             model, 
             train_loader, 
             loss_fn, 
