@@ -130,7 +130,7 @@ def main():
     #                                                        factor=0.5,
     #                                                        patience=5,
     #                                                        verbose=True)
-    # scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=lr, steps_per_epoch=max(len(train_dp)//batch_size,1), epochs=num_epochs)
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=lr, steps_per_epoch=max(len(train_dp)//batch_size,1), epochs=num_epochs)
 
     # Step 3: Train model
     best_train_loss = 10000.
@@ -146,8 +146,8 @@ def main():
     # losses = eval_loss_fn(data.y, data.edge_index, data.edge_attr, data.y)
     # exit()
     accelerator = Accelerator()
-    model, optimizer, train_loader, val_loader, test_loader = accelerator.prepare(
-        model, optimizer, train_loader, val_loader, test_loader
+    model, optimizer, train_loader, val_loader, test_loader, scheduler = accelerator.prepare(
+        model, optimizer, train_loader, val_loader, test_loader, scheduler
     )
     train_step = 0
     for epoch in range(num_epochs):
@@ -177,7 +177,8 @@ def main():
         
         train_loss = train_losses['PowerImbalance']['total'] if isinstance(loss_fn, PowerImbalanceV2) else train_losses['MaskedL2']['total']
         val_loss = val_losses['PowerImbalance']['total'] if isinstance(loss_fn, PowerImbalanceV2) else val_losses['MaskedL2']['total']
-        # scheduler.step()
+        accelerator.wait_for_everyone()
+        scheduler.step()
         train_log['train']['loss'].append(train_loss)
         train_log['val']['loss'].append(val_loss)
 
