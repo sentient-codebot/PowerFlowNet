@@ -96,6 +96,10 @@ def evaluate_epoch(
                 pass
             
         _sum_weight += _weight
+    _angle_pred = out[:, 1].detach()
+    _angle_target = data.y[:, 1]
+    for i in range(10):
+        print(f"Angle target/pred: {_angle_target[i]} | {_angle_pred[i]}")
     
     for func_name, terms in eval_losses.items():
         for term_name, term_value in terms.items():
