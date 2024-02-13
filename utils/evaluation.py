@@ -11,7 +11,7 @@ from torch.optim.optimizer import Optimizer
 import torch.nn as nn
 from tqdm import tqdm
 
-from utils.custom_loss_functions import Masked_L2_loss, PowerImbalanceV2, MixedMSEPoweImbalanceV2, get_mask_from_bus_type
+from utils.custom_loss_functions import MaskedL2Eval, PowerImbalanceV2, MixedMSEPoweImbalanceV2, get_mask_from_bus_type
 
 LOG_DIR = 'logs'
 SAVE_DIR = 'models'
@@ -54,11 +54,11 @@ def num_params(model: nn.Module) -> int:
 def evaluate_epoch(
         model: nn.Module,
         loader: DataLoader,
-        loss_fn: Callable,
+        eval_funcs: dict[str, Callable],
         device: str = 'cpu',
         total_length: int=100000,
         batch_size: int=128
-) -> float:
+) -> dict[str, dict[str, float]]:
     """
     Evaluates the performance of a trained neural network model on a dataset using the specified data loader.
 
@@ -72,39 +72,32 @@ def evaluate_epoch(
 
     """
     model.eval()
-    num_samples = 0
-    eval_losses = {
-        'MaskedL2': {},
-        'PowerImbalance': {'total': 0.},
-        'MSE': {'total': 0.},
-    }
+    _sum_weight = 0
+    eval_losses = {func_name: {} for func_name in eval_funcs.keys()}
     pbar = tqdm(loader, initial=1, total=total_length+1, desc='Evaluating:')
     for data in pbar:
+        _weight = data.x.shape[0] # actually = batch_size * num_nodes per sample. used as average weights over batches
         data = data.to(device)
         out = model(data)
 
         is_to_pred = get_mask_from_bus_type(data.bus_type) # 0, 1 mask of (N, 4). 1 is need to predict
-        if isinstance(loss_fn, Masked_L2_loss):
-            loss_terms = loss_fn(out, data.y, is_to_pred)
-            for k, v in loss_terms.items():
-                eval_losses['MaskedL2'][k] = eval_losses['MaskedL2'].get(k, 0.) + v.mean().item() * batch_size
-        elif isinstance(loss_fn, PowerImbalanceV2):
-            masked_out = out * is_to_pred + data.x * (1 - is_to_pred) # (N, 4)
-            phys_loss = loss_fn(masked_out, data.edge_index, data.edge_attr) # ()
-            eval_losses['PowerImbalance']['total'] += phys_loss.mean().item() * batch_size
-        elif isinstance(loss_fn, MixedMSEPoweImbalanceV2):
-            mixed_loss_terms = loss_fn(out, data.edge_index, data.edge_attr, data.y)
-            masked_l2_loss_terms = Masked_L2_loss(normalize=False, split_real_imag=False)(out, data.y, is_to_pred)
-            for k, v in masked_l2_loss_terms.items():
-                eval_losses['MaskedL2'][k] = eval_losses['MaskedL2'].get(k, 0.) + v.mean().item() * batch_size
-            eval_losses['MSE']['total'] += mixed_loss_terms['mse'].mean().item() * batch_size
-            eval_losses['PowerImbalance']['total'] += mixed_loss_terms['physical'].mean().item() * batch_size
-        else:
-            raise ValueError("Invalid loss function")
-
-        num_samples += batch_size
+        for func_name, func in eval_funcs.items():
+            if isinstance(MaskedL2Eval):
+                # averaged per scenario per node
+                loss_terms = func(out, data.y, is_to_pred)
+                for term_name, value in loss_terms.items():
+                    eval_losses[func_name][term_name] = eval_losses[func_name].get(term_name, 0.) + value.mean().item() * _weight
+            elif isinstance(PowerImbalanceV2):
+                # averaged per scenario
+                loss = func(out, data.edge_index, data.edge_attr)
+                eval_losses[func_name]['total'] = eval_losses[func_name].get('total', 0.) + loss.mean().item() * _weight
+            else:
+                print("you shouldn't use other eval functions.")
+                pass
+            
+        _sum_weight += _weight
     
-    for k, v in eval_losses.items():
-        for kk, vv in v.items():
-            eval_losses[k][kk] = vv / num_samples
+    for func_name, terms in eval_losses.items():
+        for term_name, term_value in terms.items():
+            eval_losses[func_name][term_name] = term_value / _sum_weight
     return eval_losses

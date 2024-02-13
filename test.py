@@ -3,15 +3,15 @@ import os
 import torch
 import torch_geometric
 
-from datasets.power_flow_data import PowerFlowDataset
-from networks.MPN import MPN, MPN_simplenet, SkipMPN, MaskEmbdMPN, MultiConvNet, MultiMPN, MaskEmbdMultiMPN
+from datasets.power_flow_data import create_pf_dp, create_batch_dp, create_dataloader
+from networks.MPN import MPN, MPN_simplenet, SkipMPN, MaskEmbdMPN, MultiConvNet, MultiMPN, MaskEmbdMultiMPNV2
 from utils.evaluation import load_model
 
 from torch_geometric.loader import DataLoader
 from utils.evaluation import evaluate_epoch
 from utils.argument_parser import argument_parser
 
-from utils.custom_loss_functions import Masked_L2_loss, PowerImbalance, MixedMSEPoweImbalance
+from utils.custom_loss_functions import MaskedL2Eval, PowerImbalanceV2
 
 LOG_DIR = 'logs'
 SAVE_DIR = 'models'
@@ -19,7 +19,7 @@ SAVE_DIR = 'models'
 
 @torch.no_grad()
 def main():
-    run_id = '20230628-6312'
+    run_id = '20240208-1129'
     models = {
         'MPN': MPN,
         'MPN_simplenet': MPN_simplenet,
@@ -27,7 +27,7 @@ def main():
         'MaskEmbdMPN': MaskEmbdMPN,
         'MultiConvNet': MultiConvNet,
         'MultiMPN': MultiMPN,
-        'MaskEmbdMultiMPN': MaskEmbdMultiMPN
+        'MaskEmbdMultiMPN': MaskEmbdMultiMPNV2,
     }
 
     args = argument_parser()
@@ -37,19 +37,22 @@ def main():
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    testset = PowerFlowDataset(root=data_dir, case=grid_case,
-                            split=[.5, .2, .3], task='test')
-    test_loader = DataLoader(testset, batch_size=batch_size, shuffle=False)
+    # testset = PowerFlowDataset(root=data_dir, case=grid_case,
+    #                         split=[.5, .2, .3], task='test')
+    # test_loader = DataLoader(testset, batch_size=batch_size, shuffle=False)
+    test_dp = create_pf_dp(data_dir, grid_case, 'test', False, 50000)
+    test_loader = create_dataloader(create_batch_dp(
+        test_dp, batch_size
+    ), num_workers=1, shuffle=False)
     
-    pwr_imb_loss = PowerImbalance(*testset.get_data_means_stds()).to(device)
-    mse_loss = torch.nn.MSELoss(reduction='mean').to(device)
-    masked_l2 = Masked_L2_loss(regularize=False).to(device)
+    pwr_imb_loss = PowerImbalanceV2().to(device)
+    masked_l2_split = MaskedL2Eval(split_real_imag=True).to(device)
+    masked_l2 = MaskedL2Eval(split_real_imag=False).to(device)
     all_losses = {
         'PowerImbalance': pwr_imb_loss,
-        'Masked_L2_loss': masked_l2,
-        'MSE': mse_loss,
+        'MaskedL2Split': masked_l2_split,
+        'MaskedL2': masked_l2,
     }
-    
     
     # Network Parameters
     nfeature_dim = args.nfeature_dim
@@ -61,11 +64,10 @@ def main():
     dropout_rate = args.dropout_rate
     model = models[args.model]
 
-    node_in_dim, node_out_dim, edge_dim = testset.get_data_dimensions()
     model = model(
-        nfeature_dim=nfeature_dim,
-        efeature_dim=efeature_dim,
-        output_dim=output_dim,
+        in_channels_node=nfeature_dim,
+        in_channels_edge=efeature_dim,
+        out_channels_node=output_dim,
         hidden_dim=hidden_dim,
         n_gnn_layers=n_gnn_layers,
         K=conv_K,
