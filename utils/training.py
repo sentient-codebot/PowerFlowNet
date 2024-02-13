@@ -41,6 +41,7 @@ def train_epoch(
     log_to_wandb: bool = False,
     epoch: int = 0,
     train_step: int = 0,
+    inverse_transforms: dict[str, Callable]={'node':{}, 'edge':{}},
 ) -> float:
     """
     Trains a neural network model for one epoch using the specified data loader and optimizer.
@@ -64,8 +65,8 @@ def train_epoch(
         'PowerImbalance': {},
         'MSE': {},
     }
-    masked_l2_eval = MaskedL2Eval(normalize=False, split_real_imag=False)
-    masked_l2_split_eval = MaskedL2Eval(normalize=False, split_real_imag=True)
+    masked_l2_eval = MaskedL2Eval(normalize=False, split_real_imag=False, pre_transforms=inverse_transforms)
+    masked_l2_split_eval = MaskedL2Eval(normalize=False, split_real_imag=True, pre_transforms=inverse_transforms)
     with tqdm(initial=1, total=total_length+1) as pbar:
         for data in loader:
             data = data.to(device)

@@ -50,26 +50,12 @@ def main():
     nomalize_data = not args.disable_normalize
     num_epochs = args.num_epochs
     
-    eval_funcs = {
-        'MaskedL2': MaskedL2Eval(normalize=False, split_real_imag=False),
-        'MaskedL2Split': MaskedL2Eval(normalize=False, split_real_imag=True),
-        'PowerImbalance': PowerImbalanceV2()
-    }
     lr = args.lr
     batch_size = args.batch_size
     grid_case = args.case
     
     alpha = args.alpha
     tau = args.tau
-    ##  train loss function
-    if args.train_loss_fn == 'power_imbalance':
-        train_loss_fn = MixedMSEPoweImbalanceV2(alpha=0., tau=1., noramlize=False, split_real_imag=True).to(device)
-    elif args.train_loss_fn == 'mse':
-        train_loss_fn = MixedMSEPoweImbalanceV2(alpha=1., tau=0., noramlize=True, split_real_imag=True).to(device)
-    elif args.train_loss_fn == 'mixed_mse_power_imbalance' or args.train_loss_fn == 'mixed':
-        train_loss_fn = MixedMSEPoweImbalanceV2(alpha=alpha, tau=tau, noramlize=True, split_real_imag=True).to(device)
-    else:
-        train_loss_fn = MixedMSEPoweImbalanceV2(alpha=1., tau=0., noramlize=True, split_real_imag=True).to(device) # mse
     
     # Network parameters
     nfeature_dim = args.nfeature_dim
@@ -90,17 +76,35 @@ def main():
 
     # Step 1: Load data
     train_dp = create_pf_dp(data_dir, grid_case, 'train', False, 50000)
-    val_dp = create_pf_dp(data_dir, grid_case, 'val', False, 50000)
-    test_dp = create_pf_dp(data_dir, grid_case, 'test', False, 50000)
+    train_batch_dp, trans, inv_trans = create_batch_dp(train_dp, batch_size, normalize=nomalize_data)
+    val_dp = create_pf_dp(data_dir, grid_case, 'val', False, 50000, transforms=list(trans['data'].values()))
+    test_dp = create_pf_dp(data_dir, grid_case, 'test', False, 50000, transforms=list(trans['data'].values()))
     
     if len(train_dp) == 0 or len(val_dp) == 0 or len(test_dp) == 0:
         print("No enough data found for all three tasks. Please check the data directory and the case name.")
     
     print(f"#Samples: training {len(train_dp)}, validation {len(val_dp)}, test {len(test_dp)}")
     
-    train_loader = create_dataloader(create_batch_dp(train_dp, batch_size), num_workers=1, shuffle=True)
-    val_loader = create_dataloader(create_batch_dp(val_dp, batch_size), num_workers=1, shuffle=False)
-    test_loader = create_dataloader(create_batch_dp(test_dp, batch_size), num_workers=1, shuffle=False)
+    train_loader = create_dataloader(train_batch_dp, num_workers=1, shuffle=True)
+    val_loader = create_dataloader(create_batch_dp(val_dp, batch_size)[0], num_workers=1, shuffle=False)
+    test_loader = create_dataloader(create_batch_dp(test_dp, batch_size)[0], num_workers=1, shuffle=False)
+    
+    # Step 2: Create data-dependent loss function
+    ##  train loss function
+    if args.train_loss_fn == 'power_imbalance':
+        train_loss_fn = MixedMSEPoweImbalanceV2(alpha=0., tau=1., noramlize=False, split_real_imag=True, pre_transforms=inv_trans).to(device)
+    elif args.train_loss_fn == 'mse':
+        train_loss_fn = MixedMSEPoweImbalanceV2(alpha=1., tau=0., noramlize=True, split_real_imag=True).to(device)
+    elif args.train_loss_fn == 'mixed_mse_power_imbalance' or args.train_loss_fn == 'mixed':
+        train_loss_fn = MixedMSEPoweImbalanceV2(alpha=alpha, tau=tau, noramlize=True, split_real_imag=True, pre_transforms=inv_trans).to(device)
+    else:
+        train_loss_fn = MixedMSEPoweImbalanceV2(alpha=1., tau=0., noramlize=True, split_real_imag=True).to(device) # mse
+    ##  eval loss function
+    eval_funcs = {
+        'MaskedL2': MaskedL2Eval(normalize=False, split_real_imag=False, pre_transforms=inv_trans),
+        'MaskedL2Split': MaskedL2Eval(normalize=False, split_real_imag=True, pre_transforms=inv_trans),
+        'PowerImbalance': PowerImbalanceV2(pre_transforms=inv_trans)
+    }
     
     # Step 2: Create model and optimizer (and scheduler)
     model = model(
@@ -156,7 +160,8 @@ def main():
             batch_size=batch_size, 
             log_to_wandb=log_to_wandb, 
             epoch=epoch, 
-            train_step=train_step
+            train_step=train_step,
+            inverse_transforms=inv_trans
         )
         
         val_losses = evaluate_epoch(
@@ -165,7 +170,7 @@ def main():
             eval_funcs, 
             device, 
             total_length=math.ceil(len(val_dp)/batch_size), 
-            batch_size=batch_size
+            batch_size=batch_size,
         )
         
         train_loss = train_losses['PowerImbalance']['total'] if isinstance(train_loss_fn, PowerImbalanceV2) else train_losses['MaskedL2']['total']
@@ -191,6 +196,8 @@ def main():
                     'args': args,
                     'val_loss': best_val_loss,
                     'model_state_dict': model.state_dict(),
+                    'transforms': trans,
+                    'inverse_transforms': inv_trans,
                 }
                 os.makedirs(os.path.dirname(SAVE_MODEL_PATH), exist_ok=True)
                 torch.save(_to_save, SAVE_MODEL_PATH)

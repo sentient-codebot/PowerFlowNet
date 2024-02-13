@@ -13,7 +13,7 @@ def main():
         task = 'train',
         fill_noise = True,
     )
-    batch_dp = create_batch_dp(dp, batch_size=2)
+    batch_dp, _ = create_batch_dp(dp, batch_size=2)
     
     rs = MultiProcessingReadingService(num_workers=4)
     dl = DataLoader2(batch_dp, reading_service=rs)

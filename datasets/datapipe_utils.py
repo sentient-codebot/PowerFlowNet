@@ -180,3 +180,71 @@ class CreateGeometricData(IterDataPipe):
             ) # shape: (E, 2)
             data = Data(x=x, y=y, bus_type=bus_type, edge_index=edge_index, edge_attr=edge_attr)
             yield data
+            
+@functional_datapipe('instance_normalize')
+class InstanceNormalize(IterDataPipe):
+    "normalize the node features per feature. "
+    def __init__(self, source_dp):
+        super().__init__()
+        self.dp = source_dp
+        _data = next(iter(self.dp))
+        self.node_mean = _data.y.mean(dim=0, keepdim=True)
+        self.node_std = _data.y.std(dim=0, keepdim=True) + 1e-6
+        self.edge_mean = _data.edge_attr.mean(dim=0, keepdim=True)
+        self.edge_std = _data.edge_attr.std(dim=0, keepdim=True) + 1e-6
+        
+    def __len__(self):
+        return len(self.dp)
+    
+    def normalize_node(self, x):
+        if self.node_mean is None:
+            self.node_mean = x.mean(dim=0, keepdim=True)
+            self.node_std = x.std(dim=0, keepdim=True) + 1e-6
+        return (x - self.node_mean.to(x.device)) / self.node_std.to(x.device)
+    
+    def normalize_edge(self, edge_attr):
+        if self.edge_mean is None:
+            self.edge_mean = edge_attr.mean(dim=0, keepdim=True)
+            self.edge_std = edge_attr.std(dim=0, keepdim=True) + 1e-6
+        return (edge_attr - self.edge_mean.to(edge_attr.device)) / self.edge_std.to(edge_attr.device)
+    
+    def denormalize_node(self, x):
+        if self.node_mean is None:
+            print('denorm node: mean and std not found. return original data')
+            return x
+        return x * self.node_std.to(x.device) + self.node_mean.to(x.device)
+    
+    def denormalize_edge(self, edge_attr):
+        if self.edge_mean is None:
+            print('denorm edge: mean and std not found. return original data')
+            return edge_attr
+        return edge_attr * self.edge_std.to(edge_attr.device) + self.edge_mean.to(edge_attr.device)
+    
+    def normalize(self, data):
+        if self.node_mean is None:
+            print('normalize: mean and std not found. return original data')
+            return data
+        data.x = self.normalize_node(data.x)
+        data.y = self.normalize_node(data.y)
+        data.edge_attr = self.normalize_edge(data.edge_attr)
+        return data
+    
+    def denormalize(self, data):
+        if self.node_mean is None:
+            print('denormalize: mean and std not found. return original data')
+            return data
+        data.x = self.denormalize_node(data.x)
+        data.y = self.denormalize_node(data.y)
+        data.edge_attr = self.denormalize_edge(data.edge_attr)
+        return data
+        
+    def __iter__(self):
+        for data in self.dp:
+            if self.node_mean is None:
+                print('******************cal mean and std******************')
+                self.node_mean = data.y.mean(dim=0, keepdim=True)
+                self.node_std = data.y.std(dim=0, keepdim=True) + 1e-6
+                self.edge_mean = data.edge_attr.mean(dim=0, keepdim=True)
+                self.edge_std = data.edge_attr.std(dim=0, keepdim=True) + 1e-6
+            data = self.normalize(data)
+            yield data

@@ -2,6 +2,7 @@
 this file defines the class of PowerFlowData, which is used to load the data of Power Flow
 """
 import os
+from copy import deepcopy
 from typing import Callable, Optional, List, Tuple, Union
 from functools import partial
 
@@ -245,6 +246,7 @@ def create_pf_dp(
     task: str,
     fill_noise: bool,
     total_samples: int = 50000,
+    transforms: list[Callable] = [],
 ) -> IterDataPipe:
     """
     process: 
@@ -278,19 +280,35 @@ def create_pf_dp(
     dp = dp.read_pf_data(length=len(node_files)) # (node_array [N, 6], edge_array [E, 4])
     dp = dp.create_geometric_data(fill_noise=fill_noise) 
     
+    if 'data' in transforms:
+        transforms = transforms['data']
+    for transform in transforms:
+        dp = dp.map(transform)
+    
     return dp
 
-def create_batch_dp(dp: IterDataPipe, batch_size: int) -> IterDataPipe:
+def create_batch_dp(dp: IterDataPipe, batch_size: int, normalize: bool = False) -> IterDataPipe:
     """
     Create a datapipe to shuffle and batch the data, collate the batched data, and yield. 
     """
+    transforms = {'data': {}, 'node': {}, 'edge': {}}
+    inverse_transforms = {'data': {}, 'node': {}, 'edge': {}}
     collate_fn = partial(torch_geometric.data.Batch.from_data_list)
     dp = dp.shuffle(buffer_size=500)
     dp = dp.batch(batch_size)
-    dp = dp.collate(collate_fn=collate_fn) # collate_fn? 
+    dp = dp.collate(collate_fn=collate_fn) # collate_fn is a function that takes a list of samples from dp and returns a batch
+    if normalize:
+        dp = dp.instance_normalize()
+        transforms['data']['normalize'] = dp.normalize
+        transforms['node']['normalize'] = dp.normalize_node
+        transforms['edge']['normalize'] = dp.normalize_edge
+        inverse_transforms['data']['normalize'] = dp.denormalize
+        inverse_transforms['node']['normalize'] = dp.denormalize_node
+        inverse_transforms['edge']['normalize'] = dp.denormalize_edge
+        
     dp = dp.sharding_filter() # allows duplicating dp for multiple workers. skipping this will cause issues
     
-    return dp
+    return dp, transforms, inverse_transforms
 
 def create_dataloader(dp: IterDataPipe, num_workers: int, shuffle: bool = True) -> DataLoader2:
     """

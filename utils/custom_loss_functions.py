@@ -29,13 +29,18 @@ class MaskedL2Eval(nn.Module):
     """
     masked l2 only for evaluation
     """
-    def __init__(self, normalize=False, split_real_imag=False):
+    def __init__(self, normalize=False, split_real_imag=False, pre_transforms:dict[str, callable]={'node':{}, 'edge':{}}):
         super().__init__()
         self.normalize = normalize
         self.split_real_imag = split_real_imag
+        self.pre_transforms = pre_transforms
         
+    @torch.no_grad()
     def forward(self, output, target, mask):
         " target shape (N, 4), mask shape (N, 4) "
+        for trans_func in self.pre_transforms['node'].values():
+            output = trans_func(output)
+            target = trans_func(target)
         if self.split_real_imag:
             output_vm, output_va = output[:, 0:1], output[:, 1:2]
             output_vreal, output_vimag = output_vm * torch.cos(output_va), output_vm * torch.sin(output_va)
@@ -333,8 +338,9 @@ class PowerImbalanceV2(MessagePassing):
         edge_index: edge index  -- (2, num_edges)
         edge_attr: edge features-- (num_edges, 2)
     """
-    def __init__(self, reduction='mean'):
+    def __init__(self, reduction='mean', pre_transforms:dict[str, callable]={'node':{}, 'edge':{}}):
         super().__init__(aggr='add', flow='target_to_source')
+        self.pre_transforms = pre_transforms
     
     def _is_one_way(self, edge_index):
         'determine if a graph id directed by reading only one edge'
@@ -431,6 +437,11 @@ class PowerImbalanceV2(MessagePassing):
             \Delta P_i = \sum_{j\in N_i} P_{ji} - P_{ij}
         $$
         """
+        for node_trans_func in self.pre_transforms['node'].values():
+            x = node_trans_func(x)
+        for edge_trans_func in self.pre_transforms['edge'].values():
+            edge_attr = edge_trans_func(edge_attr)
+            
         edge_index, edge_attr = copy_one_way_edges(edge_index, edge_attr)
         dPQ = self.propagate(edge_index, x=x, edge_attr=edge_attr) # (num_nodes, 2)
         dPQ = dPQ.square().sum(dim=-1) # (num_nodes,)
@@ -463,15 +474,16 @@ class MixedMSEPoweImbalanceV2(nn.Module):
     
     loss = alpha * mse_loss + (1-alpha) * power_imbalance_loss
     """
-    def __init__(self, alpha=0.5, tau=0.020, reduction='mean', noramlize=True, split_real_imag=False):
+    def __init__(self, alpha=0.5, tau=0.020, reduction='mean', noramlize=True, split_real_imag=False, pre_transforms:dict[str, callable]={'node':{}, 'edge':{}}):
         super().__init__()
         assert alpha <= 1. and alpha >= 0
-        self.power_imbalance = PowerImbalanceV2(reduction)
+        self.power_imbalance = PowerImbalanceV2(reduction, pre_transforms=pre_transforms)
         self.mse_loss_fn = nn.MSELoss(reduction=reduction)
         self.alpha = alpha
         self.tau = tau
         self.normalize = noramlize
         self.split_real_imag = split_real_imag
+        self.pre_transforms = pre_transforms
         
     def _split_real_imag(self, source, target):
         if not self.split_real_imag:
@@ -494,8 +506,6 @@ class MixedMSEPoweImbalanceV2(nn.Module):
         return source, target
     
     def forward(self, x, edge_index, edge_attr, y):
-        # x = torch.stack([x[:,0], x[:, 1] % 360., x[:, 2], x[:, 3]], dim=-1)
-        # y = torch.stack([y[:,0], y[:, 1] % 360., y[:, 2], y[:, 3]], dim=-1)
         loss_terms = {}
         power_imb_loss = self.power_imbalance(x, edge_index, edge_attr)
         mse_loss = self.mse_loss_fn(*self._normalize(*self._split_real_imag(x, y)))
