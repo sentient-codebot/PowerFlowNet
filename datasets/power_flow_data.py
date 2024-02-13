@@ -245,6 +245,7 @@ def create_pf_dp(
     case: str,
     task: str,
     fill_noise: bool,
+    random_bus_type: bool = False,
     total_samples: int = 50000,
     transforms: list[Callable] = [],
 ) -> IterDataPipe:
@@ -278,7 +279,7 @@ def create_pf_dp(
         zip(node_files, edge_files, sn_mva_files),
     )
     dp = dp.read_pf_data(length=len(node_files)) # (node_array [N, 6], edge_array [E, 4])
-    dp = dp.create_geometric_data(fill_noise=fill_noise) 
+    dp = dp.create_geometric_data(fill_noise=fill_noise, random_bus_type=random_bus_type) 
     
     if 'data' in transforms:
         transforms = transforms['data']

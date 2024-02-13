@@ -57,6 +57,9 @@ def argument_parser():
     parser.add_argument('--wandb_entity', type=str, default='PowerFlowNet', help='wandb entity')
     parser.add_argument('--save', default=True, action=argparse.BooleanOptionalAction)
     
+    # Experimental (exploratory) parameters
+    parser.add_argument('--random_bus_type', default=False, type=str2bool, help='Randomize bus type during training')
+    
     # Step 0: Parse arguments in .json if specified 
     #   Step 0.1 Check if .json file is specified
     #   Step 0.2 Parse whatever is in .json file

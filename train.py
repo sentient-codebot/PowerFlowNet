@@ -75,7 +75,7 @@ def main():
                    config=vars(args))
 
     # Step 1: Load data
-    train_dp = create_pf_dp(data_dir, grid_case, 'train', False, 50000)
+    train_dp = create_pf_dp(data_dir, grid_case, 'train', False, 50000, random_bus_type=args.random_bus_type)
     train_batch_dp, trans, inv_trans = create_batch_dp(train_dp, batch_size, normalize=nomalize_data)
     val_dp = create_pf_dp(data_dir, grid_case, 'val', False, 50000, transforms=list(trans['data'].values()))
     test_dp = create_pf_dp(data_dir, grid_case, 'test', False, 50000, transforms=list(trans['data'].values()))

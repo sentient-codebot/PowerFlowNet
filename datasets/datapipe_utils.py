@@ -127,10 +127,11 @@ class CreateGeometricData(IterDataPipe):
     """ create a torch.geometric.data.Data from node and edge arrays
     :param fill_noise: fill the missing data with noise
     """
-    def __init__(self, source_dp, fill_noise:bool=True):
+    def __init__(self, source_dp, fill_noise:bool=True, random_bus_type:bool=False):
         super().__init__()
         self.dp = source_dp
         self.fill_noise = fill_noise
+        self.random_bus_type = random_bus_type
         self.node_mask = {
             'slack': torch.tensor([[1., 1., 0., 0.,]]), # slack
             'pv': torch.tensor([[1., 0., 1., 0.,]]), # pv
@@ -151,7 +152,10 @@ class CreateGeometricData(IterDataPipe):
         
     def __iter__(self):
         for node_array, edge_array, sn_mva in self.dp:
-            bus_type = torch.from_numpy(node_array['type'].astype(np.int64)).view(-1, 1) # shape: (N, 1)
+            if not self.random_bus_type:
+                bus_type = torch.from_numpy(node_array['type'].astype(np.int64)).view(-1, 1) # shape: (N, 1)
+            else:
+                bus_type = torch.randint(3, (node_array.shape[0], 1))
             y = torch.from_numpy(
                 np.stack([
                     node_array['vm'].astype(np.float32),
