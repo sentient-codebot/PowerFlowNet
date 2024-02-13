@@ -14,7 +14,7 @@ from networks.MPN import MPN, MPN_simplenet, SkipMPN, MaskEmbdMPN, MultiConvNet,
 from utils.argument_parser import argument_parser
 from utils.training import train_epoch, append_to_json
 from utils.evaluation import evaluate_epoch
-from utils.custom_loss_functions import Masked_L2_loss, PowerImbalance, MixedMSEPoweImbalance
+from utils.custom_loss_functions import MaskedL2Loss, PowerImbalance, MixedMSEPoweImbalance
 
 import wandb
 
@@ -43,7 +43,7 @@ def main():
     data_dir = args.data_dir
     num_epochs = args.num_epochs
     num_epochs = 1
-    eval_loss_fn = Masked_L2_loss(regularize=False)
+    eval_loss_fn = MaskedL2Loss(regularize=False)
     lr = args.lr
     batch_size = args.batch_size
     grid_case = args.case

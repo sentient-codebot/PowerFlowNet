@@ -5,12 +5,12 @@ import os
 from torch_geometric.loader import DataLoader
 from datasets.power_flow_data import PowerFlowDataset
 from utils.argument_parser import argument_parser
-from utils.custom_loss_functions import Masked_L2_loss
+from utils.custom_loss_functions import MaskedL2Loss
 from pygsp import graphs
 import torch
 
 
-def collaborative_filtering_testing(y, mask, B, x_gt,f, eval_loss_fn=Masked_L2_loss(regularize=False)):
+def collaborative_filtering_testing(y, mask, B, x_gt,f, eval_loss_fn=MaskedL2Loss(regularize=False)):
 
     # decision variables
     z_hat = cp.Variable((x_gt.shape[0], x_gt.shape[1]))
@@ -141,7 +141,7 @@ if __name__ == "__main__":
 
     collaborative_filtering_testing(y, mask, B,x_gt,f)
 
-    eval_loss_fn=Masked_L2_loss(regularize=False)
+    eval_loss_fn=MaskedL2Loss(regularize=False)
     result = tikhonov_regularizer(1.25, L, y, mask)
 
     loss = eval_loss_fn(torch.tensor(result), torch.tensor(x_gt), mask)

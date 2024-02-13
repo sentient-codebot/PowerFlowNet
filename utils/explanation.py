@@ -14,7 +14,7 @@ from torch_geometric.utils.convert import to_networkx
 from torch_geometric.data import Data
 import torch.nn as nn
 from tqdm import tqdm
-from utils.custom_loss_functions import Masked_L2_loss
+from utils.custom_loss_functions import MaskedL2Loss
 from torch_geometric.utils.subgraph import k_hop_subgraph
 
 import networkx as nx
@@ -98,7 +98,7 @@ def explain_epoch(
                 # Step 1: inference model
                 out = model(masked_data)
 
-                if isinstance(loss_fn, Masked_L2_loss):
+                if isinstance(loss_fn, MaskedL2Loss):
                     loss = loss_fn(out[node_idx], data.y[node_idx], data.x[:, 10:][node_idx]) # already averaged over samples
                 else:
                     loss = loss_fn(out[node_idx], data.y[node_idx])

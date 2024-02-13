@@ -15,7 +15,7 @@ from networks.MPN import MPN, MPN_simplenet, SkipMPN, MaskEmbdMPN, MultiConvNet,
 from utils.argument_parser import argument_parser
 from utils.training import train_epoch, append_to_json
 from utils.evaluation import evaluate_epoch
-from utils.custom_loss_functions import Masked_L2_loss, PowerImbalanceV2, MixedMSEPoweImbalanceV2, MaskedL2Eval
+from utils.custom_loss_functions import MaskedL2Loss, PowerImbalanceV2, MixedMSEPoweImbalanceV2, MaskedL2Eval
 
 import wandb
 

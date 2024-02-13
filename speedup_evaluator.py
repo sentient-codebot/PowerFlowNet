@@ -12,7 +12,7 @@ from datasets.power_flow_data import PowerFlowDataset
 from networks.MPN import MPN, MPN_simplenet
 from utils.argument_parser import argument_parser
 from utils.evaluation import evaluate_epoch
-from utils.custom_loss_functions import Masked_L2_loss
+from utils.custom_loss_functions import MaskedL2Loss
 
 import time
 import pandapower as pp
@@ -57,9 +57,9 @@ args = argument_parser()
 
 # Training parameters
 data_dir = args.data_dir
-loss_fn = Masked_L2_loss(regularize=args.regularize,
+loss_fn = MaskedL2Loss(regularize=args.regularize,
                          regcoeff=args.regularization_coeff)
-eval_loss_fn = Masked_L2_loss(regularize=False)
+eval_loss_fn = MaskedL2Loss(regularize=False)
 
 results_dict = {"Exec. Time: " : [],
                 "Loss: " : [],
@@ -79,7 +79,7 @@ for scenario_index,scenario in enumerate(scenarios_list):
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    eval_loss_fn = Masked_L2_loss(regularize=False)
+    eval_loss_fn = MaskedL2Loss(regularize=False)
 
     #Load MPN model
     # model_path = "./models/testing/mpn_" + case_name + ".pt"

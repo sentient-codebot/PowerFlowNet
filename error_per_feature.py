@@ -15,7 +15,7 @@ import pandapower as pp
 
 from datasets.power_flow_data import PowerFlowDataset
 from networks.MPN import MaskEmbdMultiMPN
-from utils.custom_loss_functions import Masked_L2_loss
+from utils.custom_loss_functions import MaskedL2Loss
 
 LOG_DIR = 'logs'
 SAVE_DIR = 'models'
@@ -72,7 +72,7 @@ if GET_RESULTS:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         # device = torch.device("cuda:0")
 
-        eval_loss_fn = Masked_L2_loss(regularize=False)
+        eval_loss_fn = MaskedL2Loss(regularize=False)
 
         # Load MPN model
         model_path = "./models/testing/mpn_" + case_name + ".pt"

@@ -13,7 +13,7 @@ from networks.MLP import MLP
 from utils.argument_parser import argument_parser
 from utils.training import train_epoch, append_to_json
 from utils.evaluation import evaluate_epoch
-from utils.custom_loss_functions import Masked_L2_loss
+from utils.custom_loss_functions import MaskedL2Loss
 
 """ 
 This script is used to train simple MLPs on the power flow problem, so the results can be used as baseline.
@@ -25,7 +25,7 @@ args = argument_parser()
 num_epochs = 1000
 data_dir = args.data_dir
 num_epochs = args.num_epochs
-loss_fn = Masked_L2_loss()
+loss_fn = MaskedL2Loss()
 lr = args.lr
 batch_size = 1024
 print(f'Bath size: {batch_size}')
@@ -35,7 +35,7 @@ for case in cases:
     case_name = case.split("case")[1]
     print(f'\n\nCase {case_name} MLP is trained...')
 
-    eval_loss_fn = Masked_L2_loss(regularize=False)
+    eval_loss_fn = MaskedL2Loss(regularize=False)
 
     # Step 1: Load data
     trainset = PowerFlowDataset(

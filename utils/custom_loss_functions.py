@@ -73,7 +73,7 @@ class MaskedL2Eval(nn.Module):
         return loss_terms
     
 
-class Masked_L2_loss(nn.Module):
+class MaskedL2Loss(nn.Module):
     """
     Custom loss function for the masked L2 loss.
 
@@ -87,7 +87,7 @@ class Masked_L2_loss(nn.Module):
     """
 
     def __init__(self, regularize=True, regcoeff=1, normalize=True, split_real_imag=False):
-        super(Masked_L2_loss, self).__init__()
+        super(MaskedL2Loss, self).__init__()
         self.mse = nn.MSELoss(reduction='none')
         self.regularize = regularize
         self.regcoeff = regcoeff

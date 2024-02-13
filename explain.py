@@ -8,7 +8,7 @@ from torch_geometric.loader import DataLoader
 from utils.evaluation import load_model
 from utils.explanation import explain_epoch, plot_loss_subgraph, plot_loss_subgraph_per_node, plot_num_nodes_subgraph, \
     subplot_num_nodes_subgraph, subplot_loss_subgraph, subplot_loss_subgraph_per_node
-from utils.custom_loss_functions import Masked_L2_loss
+from utils.custom_loss_functions import MaskedL2Loss
 import torch
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -49,7 +49,7 @@ def main():
         model.eval()
         model, _ = load_model(model, run_id, device)
 
-        eval_loss_fn = Masked_L2_loss(regularize=False).to(device)
+        eval_loss_fn = MaskedL2Loss(regularize=False).to(device)
 
         testset = PowerFlowDataset(root=data_dir, case=grid_case,
                                     split=[.5, .2, .3], task='test')

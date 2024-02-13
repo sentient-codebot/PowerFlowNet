@@ -2,7 +2,7 @@ import time
 import pandapower as pp
 import numpy as np
 import pickle
-from utils.custom_loss_functions import Masked_L2_loss
+from utils.custom_loss_functions import MaskedL2Loss
 import torch
 from datasets.power_flow_data import PowerFlowDataset
 # write file documentation here
@@ -44,7 +44,7 @@ number_of_samples = 1000
 
 dc_losses = {"14": [], "118": [], "6470rte": []}
 
-eval_loss_fn = Masked_L2_loss(regularize=False)
+eval_loss_fn = MaskedL2Loss(regularize=False)
 
 for i, base_net in enumerate(cases):
     current_sample_number = 0
