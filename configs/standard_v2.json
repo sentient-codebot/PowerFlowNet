@@ -13,5 +13,6 @@
     "lr":           0.001,
     "alpha":        0.995,
     "tau":          0.01,
-    "wandb":        true  
+    "wandb":        true,
+    "disable_normalize": true
 }
