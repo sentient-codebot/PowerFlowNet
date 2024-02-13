@@ -25,7 +25,6 @@ def get_mask_from_bus_type(bus_type) -> torch.Tensor:
     
     return mask
 
-@torch.no_grad()
 class MaskedL2Eval(nn.Module):
     """
     masked l2 only for evaluation
