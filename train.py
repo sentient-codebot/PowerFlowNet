@@ -44,15 +44,6 @@ def main():
     data_dir = args.data_dir
     nomalize_data = not args.disable_normalize
     num_epochs = args.num_epochs
-    ## [Optional] physics-informed loss function
-    if args.train_loss_fn == 'power_imbalance':
-        loss_fn = MixedMSEPoweImbalanceV2(alpha=0., tau=1., noramlize=False, split_real_imag=True).to(device)
-    elif args.train_loss_fn == 'mse':
-        loss_fn = MixedMSEPoweImbalanceV2(alpha=1., tau=0., noramlize=True, split_real_imag=True).to(device)
-    elif args.train_loss_fn == 'mixed_mse_power_imbalance' or args.train_loss_fn == 'mixed':
-        loss_fn = MixedMSEPoweImbalanceV2(alpha=alpha, tau=tau, noramlize=True, split_real_imag=True).to(device)
-    else:
-        loss_fn = MixedMSEPoweImbalanceV2(alpha=1., tau=0., noramlize=True, split_real_imag=True).to(device) # mse
     
     eval_funcs = {
         'MaskedL2': MaskedL2Eval(split_real_imag=False),
@@ -65,6 +56,15 @@ def main():
     
     alpha = args.alpha
     tau = args.tau
+    ##  train loss function
+    if args.train_loss_fn == 'power_imbalance':
+        train_loss_fn = MixedMSEPoweImbalanceV2(alpha=0., tau=1., noramlize=False, split_real_imag=True).to(device)
+    elif args.train_loss_fn == 'mse':
+        train_loss_fn = MixedMSEPoweImbalanceV2(alpha=1., tau=0., noramlize=True, split_real_imag=True).to(device)
+    elif args.train_loss_fn == 'mixed_mse_power_imbalance' or args.train_loss_fn == 'mixed':
+        train_loss_fn = MixedMSEPoweImbalanceV2(alpha=alpha, tau=tau, noramlize=True, split_real_imag=True).to(device)
+    else:
+        train_loss_fn = MixedMSEPoweImbalanceV2(alpha=1., tau=0., noramlize=True, split_real_imag=True).to(device) # mse
     
     # Network parameters
     nfeature_dim = args.nfeature_dim
@@ -150,7 +150,7 @@ def main():
             accelerator,
             model, 
             train_loader, 
-            loss_fn, 
+            train_loss_fn, 
             optimizer, 
             device, 
             total_length=math.ceil(len(train_dp)/batch_size), 
@@ -169,8 +169,8 @@ def main():
             batch_size=batch_size
         )
         
-        train_loss = train_losses['PowerImbalance']['total'] if isinstance(loss_fn, PowerImbalanceV2) else train_losses['MaskedL2']['total']
-        val_loss = val_losses['PowerImbalance']['total'] if isinstance(loss_fn, PowerImbalanceV2) else val_losses['MaskedL2']['total']
+        train_loss = train_losses['PowerImbalance']['total'] if isinstance(train_loss_fn, PowerImbalanceV2) else train_losses['MaskedL2']['total']
+        val_loss = val_losses['PowerImbalance']['total'] if isinstance(train_loss_fn, PowerImbalanceV2) else val_losses['MaskedL2']['total']
         accelerator.wait_for_everyone()
         scheduler.step()
         train_log['train']['loss'].append(train_loss)
