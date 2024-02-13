@@ -56,7 +56,7 @@ class MaskedL2Eval(nn.Module):
             output = (output - target_mean) / target_std
             target = (target - target_mean) / target_std
 
-        error = F.mse_loss(output, target, reduciton='none') # (N, 4)
+        error = F.mse_loss(output, target, reduction='none') # (N, 4)
         error = (error * mask).sum(dim=0) / mask.sum(dim=0).clamp(min=1e-6) # (4,)
         
         loss_terms = {}
