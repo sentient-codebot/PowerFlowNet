@@ -29,6 +29,11 @@ def main():
     TRAIN_LOG_PATH = os.path.join(LOG_DIR, 'train_log/train_log_'+run_id+'.pt')
     SAVE_LOG_PATH = os.path.join(LOG_DIR, 'save_logs.json')
     SAVE_MODEL_PATH = os.path.join(SAVE_DIR, 'model_'+run_id+'.pt')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    torch.manual_seed(1234)
+    np.random.seed(1234)
+    # torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.benchmark = False
     models = {
         'MPN': MPN,
         'MPN_simplenet': MPN_simplenet,
@@ -82,12 +87,6 @@ def main():
         wandb.init(project="PowerFlowNet",
                    name=run_id,
                    config=vars(args))
-
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    torch.manual_seed(1234)
-    np.random.seed(1234)
-    # torch.backends.cudnn.deterministic = True
-    # torch.backends.cudnn.benchmark = False
 
     # Step 1: Load data
     train_dp = create_pf_dp(data_dir, grid_case, 'train', False, 50000)
