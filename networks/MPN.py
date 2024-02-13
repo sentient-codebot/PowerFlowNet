@@ -773,7 +773,12 @@ class MaskEmbdMultiMPNV2(nn.Module):
                 )
             }))
             
-        self.final_mp = EdgeAggregation(hidden_dim, in_channels_edge, hidden_dim, out_channels_node)
+        # self.final_mp = EdgeAggregation(hidden_dim, in_channels_edge, hidden_dim, out_channels_node)
+        self.final_mlp = nn.Sequential(
+            nn.Linear(hidden_dim, 4*hidden_dim),
+            nn.SiLU(),
+            nn.Linear(4*hidden_dim, out_channels_node)
+        )
         
         self.bus_type_encoder = BusTypeEncoder(3, in_channels_node) # do i need an mlp to further process it? perhaps not since it's already a learned embedding.
 
@@ -846,7 +851,8 @@ class MaskEmbdMultiMPNV2(nn.Module):
             x = nn.Dropout(self.dropout_rate)(x)
         
         # final message passing
-        x = self.final_mp(x, edge_index, edge_features) + x_init
+        # x = self.final_mp(x, edge_index, edge_features) + x_init
+        x = self.final_mlp(x) + x_init
         
         return x
     
