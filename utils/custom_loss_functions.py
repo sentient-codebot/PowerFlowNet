@@ -25,6 +25,55 @@ def get_mask_from_bus_type(bus_type) -> torch.Tensor:
     
     return mask
 
+@torch.no_grad()
+class MaskedL2Eval(nn.Module):
+    """
+    masked l2 only for evaluation
+    """
+    def __init__(self, normalize=True, split_real_imag=False):
+        super().__init__()
+        self.normalize = normalize
+        self.split_real_imag = split_real_imag
+        
+    def forward(self, output, target, mask):
+        " target shape (N, 4), mask shape (N, 4) "
+        if self.split_real_imag:
+            output_vm, output_va = output[:, 0:1], output[:, 1:2]
+            output_vreal, output_vimag = output_vm * torch.cos(output_va), output_vm * torch.sin(output_va)
+            target_vm, target_va = target[:, 0:1], target[:, 1:2]
+            target_vreal, target_vimag = target_vm * torch.cos(target_va), target_vm * torch.sin(target_va)
+            output = torch.cat([output_vreal, output_vimag, output[:, 2:4]], dim=-1)
+            target = torch.cat([target_vreal, target_vimag, target[:, 2:4]], dim=-1)
+            _pred_vrealvimag = torch.logical_or(mask[:, 0:1], mask[:, 1:2]) # (N, 1)
+            mask = torch.cat([_pred_vrealvimag, _pred_vrealvimag, mask[:, 2:4]], dim=-1) # (N, 4)
+        else:
+            output_va = output[:, 1:2] % 360.
+            target_va = target[:, 1:2] % 360.
+            output = torch.cat([output[:, 0:1], output_va, output[:, 2:4]], dim=-1)
+            target = torch.cat([target[:, 0:1], target_va, target[:, 2:4]], dim=-1)
+        if self.normalize:
+            target_mean = target.mean(dim=0, keepdim=True)
+            target_std = target.std(dim=0, keepdim=True)
+            output = (output - target_mean) / target_std
+            target = (target - target_mean) / target_std
+
+        error = F.mse_loss(output, target, reduciton='none') # (N, 4)
+        error = (error * mask).sum(dim=0) / mask.sum(dim=0).clamp(min=1e-6) # (4,)
+        
+        loss_terms = {}
+        loss_terms['total'] = error.mean()
+        if self.split_real_imag:
+            loss_terms['vreal'] = error[0]
+            loss_terms['vimag'] = error[1]
+        else:
+            loss_terms['vm'] = error[0]
+            loss_terms['va'] = error[1]
+        loss_terms['p'] = error[2]
+        loss_terms['q'] = error[3]
+
+        return loss_terms
+    
+
 class Masked_L2_loss(nn.Module):
     """
     Custom loss function for the masked L2 loss.
