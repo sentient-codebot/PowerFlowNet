@@ -727,6 +727,22 @@ class BusTypeEncoder(nn.Module):
     def forward(self, bus_type: Int[Tensor, 'B*N 1']) -> Float[Tensor, 'B*N D']:
         return self.embd(bus_type.long()).squeeze(1)
     
+class GroupLinear(nn.Module):
+    " split (N, D) into (N, D//k) to perform linear separately and then concatenate"
+    def __init__(self, in_features:int, out_features:int, num_group:int=4):
+        super().__init__()
+        assert in_features % num_group == 0 and out_features % num_group == 0
+        self.in_features = in_features
+        self.out_features = out_features
+        self.num_group = num_group
+        self.linear = nn.ModuleList([nn.Linear(in_features//num_group, out_features//num_group) for _ in range(num_group)])
+        
+    def forward(self, x: Float[Tensor, 'N D']) -> Float[Tensor, 'N D']:
+        x_split = torch.split(x, self.in_features//self.num_group, dim=-1) # list of (N, D//k)
+        x_out = torch.cat([linear(x) for linear, x in zip(self.linear, x_split)], dim=-1) # (N, D)
+        
+        return x_out
+    
 class MaskEmbdMultiMPNV2(nn.Module):
     """Wrapped Message Passing Network [version 2. tiny adaptations for data generation v3]
         - Mask Embedding
@@ -746,7 +762,7 @@ class MaskEmbdMultiMPNV2(nn.Module):
         self.mid_layers = nn.ModuleList()
 
         self.init_conv = nn.ModuleDict({
-            'mp': EdgeAggregation(in_channels_node, in_channels_edge, hidden_dim, hidden_dim),
+            'mp': EdgeAggregationV2(in_channels_node, in_channels_edge, hidden_dim, hidden_dim),
             'conv': TAGConv(hidden_dim, hidden_dim, K=K)
         })
 
@@ -764,7 +780,7 @@ class MaskEmbdMultiMPNV2(nn.Module):
                 ),
                 'ln1': nn.LayerNorm(hidden_dim, elementwise_affine=False),
                 'ln2': nn.LayerNorm(hidden_dim, elementwise_affine=False),
-                'mp': EdgeAggregation(hidden_dim, in_channels_edge, hidden_dim, hidden_dim),
+                'mp': EdgeAggregationV2(hidden_dim, in_channels_edge, hidden_dim, hidden_dim),
                 'conv': TAGConv(hidden_dim, hidden_dim, K=K),
                 'mlp': nn.Sequential(
                     nn.Linear(hidden_dim, 4*hidden_dim),
@@ -774,10 +790,15 @@ class MaskEmbdMultiMPNV2(nn.Module):
             }))
             
         # self.final_mp = EdgeAggregation(hidden_dim, in_channels_edge, hidden_dim, out_channels_node)
+        # self.final_mlp = nn.Sequential(
+        #     nn.Linear(hidden_dim, 4*hidden_dim),
+        #     nn.SiLU(),
+        #     nn.Linear(4*hidden_dim, out_channels_node)
+        # )
         self.final_mlp = nn.Sequential(
-            nn.Linear(hidden_dim, 4*hidden_dim),
+            GroupLinear(hidden_dim, 4*hidden_dim, 4),
             nn.SiLU(),
-            nn.Linear(4*hidden_dim, out_channels_node)
+            GroupLinear(4*hidden_dim, out_channels_node, 4)
         )
         
         self.bus_type_encoder = BusTypeEncoder(3, in_channels_node) # do i need an mlp to further process it? perhaps not since it's already a learned embedding.
@@ -874,9 +895,9 @@ class EdgeAggregationV2(MessagePassing):
             nn.Linear(hidden_dim, hidden_dim)
         ) # (E, Fe) -> (E, hidden_dim)
         self.edge_aggr = nn.Sequential(
-            nn.Linear(nfeature_dim*2 + hidden_dim, 4*hidden_dim),
+            nn.Linear(nfeature_dim*2 + hidden_dim, 2*hidden_dim),
             nn.SiLU(),
-            nn.Linear(4*hidden_dim, output_dim)
+            nn.Linear(2*hidden_dim, output_dim)
         )
         
     def message(self, x_i, x_j, edge_attr):
