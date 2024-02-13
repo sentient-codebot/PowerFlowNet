@@ -11,7 +11,7 @@ import torch.nn as nn
 from tqdm import tqdm
 import wandb
 
-from utils.custom_loss_functions import Masked_L2_loss, PowerImbalanceV2, MixedMSEPoweImbalanceV2, get_mask_from_bus_type
+from utils.custom_loss_functions import MaskedL2Eval, PowerImbalanceV2, MixedMSEPoweImbalanceV2, get_mask_from_bus_type
 
 
 def append_to_json(log_path, run_id, result):
@@ -56,56 +56,46 @@ def train_epoch(
 
     """
     model = model.to(device)
-    num_samples = 0
+    _sum_weight = 0
     model.train()
     train_losses = {
         'MaskedL2': {},
+        'MaskedL2Split': {},
         'PowerImbalance': {},
         'MSE': {},
     }
+    masked_l2_eval = MaskedL2Eval(normalize=False, split_real_imag=False)
+    masked_l2_split_eval = MaskedL2Eval(normalize=False, split_real_imag=True)
     with tqdm(initial=1, total=total_length+1) as pbar:
         for data in loader:
             data = data.to(device)
+            _weight = data.x.shape[0] # actually = batch_size * num_nodes per sample. used as average weights over batches
             with accelerator.autocast():
                 out = model(data)   # (N, 4)
                                     # data.y.shape == (N, 4)
                 is_to_pred = get_mask_from_bus_type(data.bus_type) # 0, 1 mask of (N, 4). 1 is need to predict
-                if isinstance(loss_fn, Masked_L2_loss):
-                    loss_terms = loss_fn(out, data.y, is_to_pred)
-                    for k, v in loss_terms.items():
-                        train_losses['MaskedL2'][k] = train_losses['MaskedL2'].get(k, 0.) + v.mean().item() * batch_size
-                    loss = loss_terms['total']
-                    if log_to_wandb:
-                        wandb.log({
-                            'Train': {
-                                'train_loss': loss.item(),
-                                'MaskedL2': {
-                                    k: v.mean().item() for k, v in loss_terms.items()
-                                }
-                            },
-                            'Epoch': epoch,
-                            'Train Step': train_step
-                        }, step=train_step)
-                elif isinstance(loss_fn, PowerImbalanceV2):
-                    print('PowerImbalanceV2 deprecated. used mixed with w=0.')
-                    return 
-                    # masked_out = out * is_to_pred + data.x * (1 - is_to_pred) # (N, 4)
-                    # loss = loss_fn(masked_out, data.edge_index, data.edge_attr)
-                    # train_losses['PowerImbalance']['total'] = train_losses['PowerImbalance'].get('total', 0.) + loss.mean().item() * batch_size
-                elif isinstance(loss_fn, MixedMSEPoweImbalanceV2):
+                if isinstance(loss_fn, MixedMSEPoweImbalanceV2):
                     mixed_loss_terms = loss_fn(out, data.edge_index, data.edge_attr, data.y)
                     loss = mixed_loss_terms['loss']
+                    # mini eval
+                    #   mixed part, mse + phys
+                    train_losses['MSE']['total'] = train_losses['MSE'].get('total', 0.) + mixed_loss_terms['mse'].mean().item() * _weight
+                    train_losses['PowerImbalance']['total'] = train_losses['PowerImbalance'].get('total', 0.) + mixed_loss_terms['physical'].mean().item() * _weight
+                    #   masked l2 part
                     with torch.no_grad():
-                        masked_l2_loss_terms = Masked_L2_loss(normalize=False)(out, data.y, is_to_pred)
-                    for k, v in masked_l2_loss_terms.items():
-                        train_losses['MaskedL2'][k] = train_losses['MaskedL2'].get(k, 0.) + v.mean().item() * batch_size
-                    train_losses['MSE']['total'] = train_losses['MSE'].get('total', 0.) + mixed_loss_terms['mse'].mean().item() * batch_size
-                    train_losses['PowerImbalance']['total'] = train_losses['PowerImbalance'].get('total', 0.) + mixed_loss_terms['physical'].mean().item() * batch_size
+                        masked_l2_loss_terms = masked_l2_eval(out, data.y, is_to_pred)
+                        masked_l2_split_loss_terms = masked_l2_split_eval(out, data.y, is_to_pred)
+                    for term_name, value in masked_l2_loss_terms.items():
+                        train_losses['MaskedL2'][term_name] = train_losses['MaskedL2'].get(term_name, 0.) + value.mean().item() * _weight
+                    for term_name, value in masked_l2_split_loss_terms.items():
+                        train_losses['MaskedL2Split'][term_name] = train_losses['MaskedL2Split'].get(term_name, 0.) + value.mean().item() * _weight
+                    # log mini eval results
                     if log_to_wandb:
                         wandb.log({
                             'Train': {
-                                'train_loss': loss.item(),
+                                'Loss': loss.item(),
                                 'MaskedL2': {k: v.mean().item() for k, v in masked_l2_loss_terms.items()},
+                                'MaskedL2Split': {k: v.mean().item() for k, v in masked_l2_split_loss_terms.items()},
                                 'MSE': mixed_loss_terms['mse'].mean().item(),
                                 'PowerImbalance': mixed_loss_terms['physical'].mean().item(),
                             },
@@ -113,8 +103,7 @@ def train_epoch(
                             'Train Step': train_step
                         }, step=train_step)
                 else:
-                    print('invalid loss function')
-                    return
+                    raise ValueError(f'you shouldn\'t use this loss function {type(loss_fn)}!')
             
             accelerator.backward(loss)
             accelerator.clip_grad_norm_(model.parameters(), 1.)
@@ -124,14 +113,14 @@ def train_epoch(
             optimizer.zero_grad()
             accelerator.wait_for_everyone()
                 
-            num_samples += batch_size
+            _sum_weight += _weight
             train_step += 1
             pbar.set_description(f'train loss: {loss.item():.4f}')
             pbar.update(1)
     
-    for k, v in train_losses.items():
-        for kk, vv in v.items():
-            train_losses[k][kk] = vv / num_samples
+    for func_name, terms in train_losses.items():
+        for term_name, term_value in terms.items():
+            train_losses[func_name][term_name] = term_value / _sum_weight
 
     return train_losses, train_step
 

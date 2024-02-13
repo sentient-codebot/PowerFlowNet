@@ -15,7 +15,7 @@ from networks.MPN import MPN, MPN_simplenet, SkipMPN, MaskEmbdMPN, MultiConvNet,
 from utils.argument_parser import argument_parser
 from utils.training import train_epoch, append_to_json
 from utils.evaluation import evaluate_epoch
-from utils.custom_loss_functions import Masked_L2_loss, PowerImbalanceV2, MixedMSEPoweImbalanceV2
+from utils.custom_loss_functions import Masked_L2_loss, PowerImbalanceV2, MixedMSEPoweImbalanceV2, MaskedL2Eval
 
 import wandb
 
@@ -44,8 +44,21 @@ def main():
     data_dir = args.data_dir
     nomalize_data = not args.disable_normalize
     num_epochs = args.num_epochs
-    loss_fn = Masked_L2_loss(regularize=args.regularize, regcoeff=args.regularization_coeff, normalize=True)
-    eval_loss_fn = MixedMSEPoweImbalanceV2(alpha=0.9, tau=0.020, noramlize=False, split_real_imag=True)
+    ## [Optional] physics-informed loss function
+    if args.train_loss_fn == 'power_imbalance':
+        loss_fn = MixedMSEPoweImbalanceV2(alpha=0., tau=1., noramlize=False, split_real_imag=True).to(device)
+    elif args.train_loss_fn == 'mse':
+        loss_fn = MixedMSEPoweImbalanceV2(alpha=1., tau=0., noramlize=True, split_real_imag=True).to(device)
+    elif args.train_loss_fn == 'mixed_mse_power_imbalance' or args.train_loss_fn == 'mixed':
+        loss_fn = MixedMSEPoweImbalanceV2(alpha=alpha, tau=tau, noramlize=True, split_real_imag=True).to(device)
+    else:
+        loss_fn = MixedMSEPoweImbalanceV2(alpha=1., tau=0., noramlize=True, split_real_imag=True).to(device) # mse
+    
+    eval_funcs = {
+        'MaskedL2': MaskedL2Eval(split_real_imag=False),
+        'MaskedL2Split': MaskedL2Eval(split_real_imag=True),
+        'PowerImbalance': PowerImbalanceV2()
+    }
     lr = args.lr
     batch_size = args.batch_size
     grid_case = args.case
@@ -77,14 +90,6 @@ def main():
     # torch.backends.cudnn.benchmark = False
 
     # Step 1: Load data
-    # trainset = PowerFlowDataset(root=data_dir, case=grid_case, split=[.5, .2, .3], task='train', normalize=nomalize_data)
-    # valset = PowerFlowDataset(root=data_dir, case=grid_case, split=[.5, .2, .3], task='val', normalize=nomalize_data)
-    # testset = PowerFlowDataset(root=data_dir, case=grid_case, split=[.5, .2, .3], task='test', normalize=nomalize_data)
-        
-    # train_loader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
-    # val_loader = DataLoader(valset, batch_size=batch_size, shuffle=False)
-    # test_loader = DataLoader(testset, batch_size=batch_size, shuffle=False)
-    
     train_dp = create_pf_dp(data_dir, grid_case, 'train', False, 50000)
     val_dp = create_pf_dp(data_dir, grid_case, 'val', False, 50000)
     test_dp = create_pf_dp(data_dir, grid_case, 'test', False, 50000)
@@ -97,17 +102,6 @@ def main():
     train_loader = create_dataloader(create_batch_dp(train_dp, batch_size), num_workers=1, shuffle=True)
     val_loader = create_dataloader(create_batch_dp(val_dp, batch_size), num_workers=1, shuffle=False)
     test_loader = create_dataloader(create_batch_dp(test_dp, batch_size), num_workers=1, shuffle=False)
-    
-    ## [Optional] physics-informed loss function
-    if args.train_loss_fn == 'power_imbalance':
-        # overwrite the loss function
-        loss_fn = PowerImbalanceV2().to(device)
-    elif args.train_loss_fn == 'masked_l2':
-        loss_fn = Masked_L2_loss(regularize=args.regularize, regcoeff=args.regularization_coeff)
-    elif args.train_loss_fn == 'mixed_mse_power_imbalance' or args.train_loss_fn == 'mixed':
-        loss_fn = MixedMSEPoweImbalanceV2(alpha=alpha, tau=tau, noramlize=True, split_real_imag=True).to(device)
-    else:
-        loss_fn = torch.nn.MSELoss()
     
     # Step 2: Create model and optimizer (and scheduler)
     model = model(
@@ -169,7 +163,7 @@ def main():
         val_losses = evaluate_epoch(
             model, 
             val_loader, 
-            eval_loss_fn, 
+            eval_funcs, 
             device, 
             total_length=math.ceil(len(val_dp)/batch_size), 
             batch_size=batch_size
@@ -229,10 +223,10 @@ def main():
     if args.save:
         _to_load = torch.load(SAVE_MODEL_PATH)
         model.load_state_dict(_to_load['model_state_dict'])
-        test_loss = evaluate_epoch(model, test_loader, eval_loss_fn, device)
-        print(f"Test loss: {best_val_loss:.4f}")
+        test_losses = evaluate_epoch(model, test_loader, eval_funcs, device, total_length=math.ceil(len(val_dp)/batch_size), batch_size=batch_size)
+        print(f"Test loss: {test_losses}")
         if log_to_wandb:
-            wandb.log({'test_loss': test_loss})
+            wandb.run.summary['Test Losses'] = test_losses
 
     # Step 5: Save results
     os.makedirs(os.path.join(LOG_DIR, 'train_log'), exist_ok=True)
