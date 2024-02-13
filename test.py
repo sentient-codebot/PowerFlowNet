@@ -1,4 +1,5 @@
 import os
+import math
 
 import torch
 import torch_geometric
@@ -48,7 +49,7 @@ def main():
     pwr_imb_loss = PowerImbalanceV2().to(device)
     masked_l2_split = MaskedL2Eval(split_real_imag=True).to(device)
     masked_l2 = MaskedL2Eval(split_real_imag=False).to(device)
-    all_losses = {
+    eval_funcs = {
         'PowerImbalance': pwr_imb_loss,
         'MaskedL2Split': masked_l2_split,
         'MaskedL2': masked_l2,
@@ -79,11 +80,8 @@ def main():
     
     print(f"Model: {args.model}")
     print(f"Case: {grid_case}")
-    for name, loss_fn in all_losses.items():
-        test_loss = evaluate_epoch(model, test_loader, loss_fn, device)
-        print(f"{name}:\t{test_loss:.4f}")
-    
-
+    test_losses = evaluate_epoch(model, test_loader, eval_funcs, device, total_length=math.ceil(len(test_dp)/batch_size), batch_size=batch_size)
+    print(test_losses)
 
 if __name__ == "__main__":
     main()

@@ -82,12 +82,12 @@ def evaluate_epoch(
 
         is_to_pred = get_mask_from_bus_type(data.bus_type) # 0, 1 mask of (N, 4). 1 is need to predict
         for func_name, func in eval_funcs.items():
-            if isinstance(MaskedL2Eval):
+            if isinstance(func, MaskedL2Eval):
                 # averaged per scenario per node
                 loss_terms = func(out, data.y, is_to_pred)
                 for term_name, value in loss_terms.items():
                     eval_losses[func_name][term_name] = eval_losses[func_name].get(term_name, 0.) + value.mean().item() * _weight
-            elif isinstance(PowerImbalanceV2):
+            elif isinstance(func, PowerImbalanceV2):
                 # averaged per scenario
                 loss = func(out, data.edge_index, data.edge_attr)
                 eval_losses[func_name]['total'] = eval_losses[func_name].get('total', 0.) + loss.mean().item() * _weight
