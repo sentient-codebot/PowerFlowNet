@@ -505,6 +505,9 @@ class MixedMSEPoweImbalanceV2(nn.Module):
         loss_terms['loss'] = loss
         
         return loss_terms
+    
+class AngleRegularization(nn.Module):
+    ...
 
 def main():
     # TODO import trainset, select an data.y, calculate the imbalance
