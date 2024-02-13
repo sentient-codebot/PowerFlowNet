@@ -29,7 +29,7 @@ class MaskedL2Eval(nn.Module):
     """
     masked l2 only for evaluation
     """
-    def __init__(self, normalize=True, split_real_imag=False):
+    def __init__(self, normalize=False, split_real_imag=False):
         super().__init__()
         self.normalize = normalize
         self.split_real_imag = split_real_imag
