@@ -47,8 +47,8 @@ def main():
     ), num_workers=1, shuffle=False)
     
     pwr_imb_loss = PowerImbalanceV2().to(device)
-    masked_l2_split = MaskedL2Eval(split_real_imag=True).to(device)
-    masked_l2 = MaskedL2Eval(split_real_imag=False).to(device)
+    masked_l2_split = MaskedL2Eval(normalize=False, split_real_imag=True).to(device)
+    masked_l2 = MaskedL2Eval(normalize=False, split_real_imag=False).to(device)
     eval_funcs = {
         'PowerImbalance': pwr_imb_loss,
         'MaskedL2Split': masked_l2_split,

@@ -51,8 +51,8 @@ def main():
     num_epochs = args.num_epochs
     
     eval_funcs = {
-        'MaskedL2': MaskedL2Eval(split_real_imag=False),
-        'MaskedL2Split': MaskedL2Eval(split_real_imag=True),
+        'MaskedL2': MaskedL2Eval(normalize=False, split_real_imag=False),
+        'MaskedL2Split': MaskedL2Eval(normalize=False, split_real_imag=True),
         'PowerImbalance': PowerImbalanceV2()
     }
     lr = args.lr
