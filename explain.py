@@ -49,7 +49,7 @@ def main():
         model.eval()
         model, _ = load_model(model, run_id, device)
 
-        eval_loss_fn = MaskedL2Loss(regularize=False).to(device)
+        eval_loss_fn = MaskedL2Loss().to(device)
 
         testset = PowerFlowDataset(root=data_dir, case=grid_case,
                                     split=[.5, .2, .3], task='test')

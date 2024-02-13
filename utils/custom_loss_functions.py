@@ -86,11 +86,9 @@ class MaskedL2Loss(nn.Module):
         torch.Tensor: The masked L2 loss.
     """
 
-    def __init__(self, regularize=True, regcoeff=1, normalize=True, split_real_imag=False):
+    def __init__(self, normalize=True, split_real_imag=False):
         super(MaskedL2Loss, self).__init__()
         self.mse = nn.MSELoss(reduction='none')
-        self.regularize = regularize
-        self.regcoeff = regcoeff
         self.normalize = normalize
         self.split_real_imag = split_real_imag
 

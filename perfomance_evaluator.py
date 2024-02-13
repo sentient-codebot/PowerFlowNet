@@ -38,7 +38,7 @@ for case in cases:
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    eval_loss_fn = MaskedL2Loss(regularize=False)
+    eval_loss_fn = MaskedL2Loss()
 
     # Load MPN model
     model_path = "./models/testing/mpn_" + case_name + ".pt"

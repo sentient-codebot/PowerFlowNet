@@ -43,7 +43,7 @@ def main():
     data_dir = args.data_dir
     num_epochs = args.num_epochs
     num_epochs = 1
-    eval_loss_fn = MaskedL2Loss(regularize=False)
+    eval_loss_fn = MaskedL2Loss()
     lr = args.lr
     batch_size = args.batch_size
     grid_case = args.case

@@ -57,9 +57,8 @@ args = argument_parser()
 
 # Training parameters
 data_dir = args.data_dir
-loss_fn = MaskedL2Loss(regularize=args.regularize,
-                         regcoeff=args.regularization_coeff)
-eval_loss_fn = MaskedL2Loss(regularize=False)
+loss_fn = MaskedL2Loss()
+eval_loss_fn = MaskedL2Loss()
 
 results_dict = {"Exec. Time: " : [],
                 "Loss: " : [],
@@ -79,7 +78,7 @@ for scenario_index,scenario in enumerate(scenarios_list):
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    eval_loss_fn = MaskedL2Loss(regularize=False)
+    eval_loss_fn = MaskedL2Loss()
 
     #Load MPN model
     # model_path = "./models/testing/mpn_" + case_name + ".pt"

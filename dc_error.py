@@ -44,7 +44,7 @@ number_of_samples = 1000
 
 dc_losses = {"14": [], "118": [], "6470rte": []}
 
-eval_loss_fn = MaskedL2Loss(regularize=False)
+eval_loss_fn = MaskedL2Loss()
 
 for i, base_net in enumerate(cases):
     current_sample_number = 0

@@ -10,7 +10,7 @@ from pygsp import graphs
 import torch
 
 
-def collaborative_filtering_testing(y, mask, B, x_gt,f, eval_loss_fn=MaskedL2Loss(regularize=False)):
+def collaborative_filtering_testing(y, mask, B, x_gt,f, eval_loss_fn=MaskedL2Loss()):
 
     # decision variables
     z_hat = cp.Variable((x_gt.shape[0], x_gt.shape[1]))
@@ -141,7 +141,7 @@ if __name__ == "__main__":
 
     collaborative_filtering_testing(y, mask, B,x_gt,f)
 
-    eval_loss_fn=MaskedL2Loss(regularize=False)
+    eval_loss_fn=MaskedL2Loss()
     result = tikhonov_regularizer(1.25, L, y, mask)
 
     loss = eval_loss_fn(torch.tensor(result), torch.tensor(x_gt), mask)

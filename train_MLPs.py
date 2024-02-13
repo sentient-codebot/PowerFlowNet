@@ -35,7 +35,7 @@ for case in cases:
     case_name = case.split("case")[1]
     print(f'\n\nCase {case_name} MLP is trained...')
 
-    eval_loss_fn = MaskedL2Loss(regularize=False)
+    eval_loss_fn = MaskedL2Loss()
 
     # Step 1: Load data
     trainset = PowerFlowDataset(
