@@ -245,9 +245,9 @@ def create_pf_dp(
     case: str,
     task: str,
     fill_noise: bool,
-    random_bus_type: bool = False,
     total_samples: int = 50000,
     transforms: list[Callable] = [],
+    random_bus_type: bool = False,
 ) -> IterDataPipe:
     """
     process: 
