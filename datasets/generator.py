@@ -160,7 +160,7 @@ def generate_sample(base_net_create) -> list[PowerFlowData|None, bool]:
     x = np.random.uniform(0.9*x, 1.1*x, x.shape[0])
     c = np.random.uniform(0.9*c, 1.1*c, c.shape[0])
     # le = np.random.uniform(0.8*le, 1.2*le, le.shape[0]) # keep line length unchanged. 
-    theta_shift_degree = np.random.uniform(-11.46, 11.46, theta_shift_degree.shape[0]) # -0.2 ~ 0.2 rad
+    # theta_shift_degree = np.random.uniform(-11.46, 11.46, theta_shift_degree.shape[0]) # -0.2 ~ 0.2 rad
 
     # alter params: bus
     Vg = np.random.uniform(0.95, 1.05, net.gen['vm_pu'].shape[0])
