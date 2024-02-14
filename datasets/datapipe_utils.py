@@ -88,7 +88,7 @@ class ReadEdgeFeatures(IterDataPipe):
         
 @functional_datapipe('read_pf_data')
 class ReadPFData(IterDataPipe):
-    " source_dp: a datapipe that yields a 2-tuple [node_path, edge_path] of csv paths. NOTE: PQ ARE IN MW/MVAR"
+    " source_dp: a datapipe that yields a 3-tuple [node_path, edge_path] of csv paths. NOTE: PQ ARE IN MW/MVAR"
     def __init__(self, source_dp, length=25000):
         super().__init__()
         self.dp = source_dp
