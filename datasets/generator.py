@@ -156,10 +156,10 @@ def generate_sample(base_net_create) -> list[PowerFlowData|None, bool]:
     Qd = net.load['q_mvar'].values
 
     # alter params: line
-    r = np.random.uniform(0.8*r, 1.2*r, r.shape[0])
-    x = np.random.uniform(0.8*x, 1.2*x, x.shape[0])
-    c = np.random.uniform(0.8*c, 1.2*c, c.shape[0])
-    le = np.random.uniform(0.8*le, 1.2*le, le.shape[0])
+    r = np.random.uniform(0.9*r, 1.1*r, r.shape[0])
+    x = np.random.uniform(0.9*x, 1.1*x, x.shape[0])
+    c = np.random.uniform(0.9*c, 1.1*c, c.shape[0])
+    # le = np.random.uniform(0.8*le, 1.2*le, le.shape[0]) # keep line length unchanged. 
     theta_shift_degree = np.random.uniform(-11.46, 11.46, theta_shift_degree.shape[0]) # -0.2 ~ 0.2 rad
 
     # alter params: bus
@@ -201,7 +201,7 @@ def generate_sample(base_net_create) -> list[PowerFlowData|None, bool]:
     G = nx.Graph(ybus)
     edge_features_raw = np.array(list(G.edges.data('weight')))
     edge_weights = np.stack([edge_features_raw[:, 2].real, edge_features_raw[:, 2].imag], axis=1) # shape: (num_edges, 2)
-    edge_features = np.concatenate([edge_features_raw[:, :2], edge_weights], axis=1) # shape: (num_edges, 4). from, to, r, x
+    edge_features = np.concatenate([edge_features_raw[:, :2], edge_weights], axis=1) # shape: (num_edges, 4). from, to, g, b
     edge_features = edge_features.real # shape: (num_edges, 4)
 
     # Extract node features fron net.res. In total, we need: index, type, Vm, Va, Pd, Qd
