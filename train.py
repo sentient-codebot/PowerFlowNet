@@ -92,7 +92,7 @@ def main():
     
     # Step 2: Create data-dependent loss function
     ##  train loss function
-    LossFunc = partial(MixedMSEPoweImbalanceV2, normalize=True, split_real_imag=True, pre_transforms=inv_trans, edge_weight_type=EdgeWeightType.IMPEDANCE)
+    LossFunc = partial(MixedMSEPoweImbalanceV2, normalize=True, split_real_imag=False, pre_transforms=inv_trans, edge_weight_type=EdgeWeightType.IMPEDANCE)
     if args.train_loss_fn == 'power_imbalance':
         train_loss_fn = LossFunc(alpha=0., tau=1.).to(device)
     elif args.train_loss_fn == 'mse':
