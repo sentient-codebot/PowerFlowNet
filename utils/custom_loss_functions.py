@@ -1,3 +1,5 @@
+import enum
+
 import torch.nn as nn
 import torch
 from torchvision import datasets, transforms
@@ -7,6 +9,10 @@ from torch_geometric.nn import MessagePassing
 import networkx as nx
 
 from networks.MPN import copy_one_way_edges
+
+class EdgeWeightType(enum.Enum):
+    ADMITTANCE = enum.auto()
+    IMPEDANCE = enum.auto()
 
 def get_mask_from_bus_type(bus_type) -> torch.Tensor:
     "bus_type: [N, 1]. mask_value = 1 if need to predict, 0 if not."
@@ -51,8 +57,8 @@ class MaskedL2Eval(nn.Module):
             _pred_vrealvimag = torch.logical_or(mask[:, 0:1], mask[:, 1:2]) # (N, 1)
             mask = torch.cat([_pred_vrealvimag, _pred_vrealvimag, mask[:, 2:4]], dim=-1) # (N, 4)
         else:
-            output_va = output[:, 1:2] % 360.
-            target_va = target[:, 1:2] % 360.
+            output_va = output[:, 1:2]
+            target_va = target[:, 1:2]
             output = torch.cat([output[:, 0:1], output_va, output[:, 2:4]], dim=-1)
             target = torch.cat([target[:, 0:1], target_va, target[:, 2:4]], dim=-1)
         if self.normalize:
@@ -338,9 +344,10 @@ class PowerImbalanceV2(MessagePassing):
         edge_index: edge index  -- (2, num_edges)
         edge_attr: edge features-- (num_edges, 2)
     """
-    def __init__(self, reduction='mean', pre_transforms:dict[str, callable]={'node':{}, 'edge':{}}):
+    def __init__(self, reduction='mean', pre_transforms:dict[str, callable]={'node':{}, 'edge':{}}, edge_weight_type=EdgeWeightType.ADMITTANCE):
         super().__init__(aggr='add', flow='target_to_source')
         self.pre_transforms = pre_transforms
+        self.edge_weight_type = edge_weight_type
     
     def _is_one_way(self, edge_index):
         'determine if a graph id directed by reading only one edge'
@@ -389,8 +396,14 @@ class PowerImbalanceV2(MessagePassing):
         Return:
             Pji|Qji: (num_edges, 2)
         """
-        g_ij = edge_attr[:, 0:1] # (num_edges, 1)
-        b_ij = edge_attr[:, 1:2] # (num_edges, 1)
+        if self.edge_weight_type == EdgeWeightType.ADMITTANCE:
+            g_ij = edge_attr[:, 0:1] # (num_edges, 1)
+            b_ij = edge_attr[:, 1:2] # (num_edges, 1)
+        else: # EdgeWeightType.IMPEDANCE
+            r_ij = edge_attr[:, 0:1] # (num_edges, 1)
+            x_ij = edge_attr[:, 1:2] # (num_edges, 1)
+            g_ij = r_ij / (r_ij**2 + x_ij**2)
+            b_ij = -x_ij / (r_ij**2 + x_ij**2) # don't forget the minus sign
         vm_i = x_i[:, 0:1] # (num_edges, 1)
         va_i = 1/180.*torch.pi*x_i[:, 1:2] # (num_edges, 1)
         vm_j = x_j[:, 0:1]
@@ -474,14 +487,15 @@ class MixedMSEPoweImbalanceV2(nn.Module):
     
     loss = alpha * mse_loss + (1-alpha) * power_imbalance_loss
     """
-    def __init__(self, alpha=0.5, tau=0.020, reduction='mean', noramlize=True, split_real_imag=False, pre_transforms:dict[str, callable]={'node':{}, 'edge':{}}):
+    def __init__(self, alpha=0.5, tau=0.020, reduction='mean', normalize=True, split_real_imag=False, pre_transforms:dict[str, callable]={'node':{}, 'edge':{}},
+                 edge_weight_type=EdgeWeightType.ADMITTANCE):
         super().__init__()
         assert alpha <= 1. and alpha >= 0
-        self.power_imbalance = PowerImbalanceV2(reduction, pre_transforms=pre_transforms)
-        self.mse_loss_fn = nn.MSELoss(reduction=reduction)
+        self.power_imbalance = PowerImbalanceV2(reduction, pre_transforms=pre_transforms, edge_weight_type=edge_weight_type)
+        self.mse_loss_fn = nn.MSELoss(reduction='none')
         self.alpha = alpha
         self.tau = tau
-        self.normalize = noramlize
+        self.normalize = normalize
         self.split_real_imag = split_real_imag
         self.pre_transforms = pre_transforms
         
@@ -505,10 +519,19 @@ class MixedMSEPoweImbalanceV2(nn.Module):
         target = (target - target_mean) / target_std
         return source, target
     
-    def forward(self, x, edge_index, edge_attr, y):
+    def forward(self, x, edge_index, edge_attr, y, mask=None):
         loss_terms = {}
         power_imb_loss = self.power_imbalance(x, edge_index, edge_attr)
-        mse_loss = self.mse_loss_fn(*self._normalize(*self._split_real_imag(x, y)))
+        if mask is None:
+            mse_loss = self.mse_loss_fn(*self._normalize(*self._split_real_imag(x, y))).mean()
+        else:
+            mask = mask.to(x.device)
+            if self.split_real_imag:
+                _pred_vrealvimag = torch.logical_or(mask[:, 0:1], mask[:, 1:2]) # (N, 1)
+                mask = torch.cat([_pred_vrealvimag, _pred_vrealvimag, mask[:, 2:4]], dim=-1) # (N, 4)
+            mse_loss = self.mse_loss_fn(*self._normalize(*self._split_real_imag(x, y))) # (N, 4)
+            mse_loss = (mse_loss * mask).sum(dim=0) / mask.sum(dim=0).clamp(min=1e-6) # (4,)
+            mse_loss = mse_loss.mean()
         loss = self.alpha * mse_loss + (1-self.alpha) * self.tau*power_imb_loss
         loss_terms['physical'] = power_imb_loss
         loss_terms['mse'] = mse_loss
