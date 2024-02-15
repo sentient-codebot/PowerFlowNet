@@ -76,7 +76,7 @@ def train_epoch(
                                     # data.y.shape == (N, 4)
                 is_to_pred = get_mask_from_bus_type(data.bus_type) # 0, 1 mask of (N, 4). 1 is need to predict
                 if isinstance(loss_fn, MixedMSEPoweImbalanceV2):
-                    mixed_loss_terms = loss_fn(out, data.edge_index, data.edge_attr, data.y, is_to_pred)
+                    mixed_loss_terms = loss_fn(out, data.edge_index, data.edge_attr, data.y)
                     loss = mixed_loss_terms['loss']
                     # mini eval
                     #   mixed part, mse + phys
