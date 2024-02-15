@@ -200,8 +200,11 @@ def generate_sample(base_net_create) -> list[PowerFlowData|None, bool]:
     # Extract edge index and features from ybus
     G = nx.Graph(ybus)
     edge_features_raw = np.array(list(G.edges.data('weight')))
-    edge_weights = np.stack([edge_features_raw[:, 2].real, edge_features_raw[:, 2].imag], axis=1) # shape: (num_edges, 2)
-    edge_features = np.concatenate([edge_features_raw[:, :2], edge_weights], axis=1) # shape: (num_edges, 4). from, to, g, b
+    edge_weights = np.stack([
+        (1./(1e-7+edge_features_raw[:, 2])).real, 
+        (1./(1e-7+edge_features_raw[:, 2])).imag
+    ], axis=1) # shape: (num_edges, 2)
+    edge_features = np.concatenate([edge_features_raw[:, :2], edge_weights], axis=1) # shape: (num_edges, 4). from, to, r, x
     edge_features = edge_features.real # shape: (num_edges, 4)
 
     # Extract node features fron net.res. In total, we need: index, type, Vm, Va, Pd, Qd
@@ -246,8 +249,12 @@ def generate_data(
         base_net_create = create_case3
     elif case_name == '14':
         base_net_create = pp.networks.case14
+    elif case_name == '57':
+        base_net_create = pp.networks.case57
     elif case_name == '118':
         base_net_create = pp.networks.case118
+    elif case_name == '145':
+        base_net_create = pp.networks.case145
     elif case_name == '6470rte':
         base_net_create = pp.networks.case6470rte
     else:
