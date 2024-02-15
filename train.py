@@ -2,6 +2,7 @@ from datetime import datetime
 import os
 import random
 import math
+from functools import partial
 
 import numpy as np
 import torch
@@ -15,7 +16,7 @@ from networks.MPN import MPN, MPN_simplenet, SkipMPN, MaskEmbdMPN, MultiConvNet,
 from utils.argument_parser import argument_parser
 from utils.training import train_epoch, append_to_json
 from utils.evaluation import evaluate_epoch
-from utils.custom_loss_functions import MaskedL2Loss, PowerImbalanceV2, MixedMSEPoweImbalanceV2, MaskedL2Eval
+from utils.custom_loss_functions import MaskedL2Loss, PowerImbalanceV2, MixedMSEPoweImbalanceV2, MaskedL2Eval, EdgeWeightType
 
 import wandb
 
@@ -91,14 +92,15 @@ def main():
     
     # Step 2: Create data-dependent loss function
     ##  train loss function
+    LossFunc = partial(MixedMSEPoweImbalanceV2, normalize=True, split_real_imag=True, pre_transforms=inv_trans, edge_weight_type=EdgeWeightType.IMPEDANCE)
     if args.train_loss_fn == 'power_imbalance':
-        train_loss_fn = MixedMSEPoweImbalanceV2(alpha=0., tau=1., noramlize=False, split_real_imag=True, pre_transforms=inv_trans).to(device)
+        train_loss_fn = LossFunc(alpha=0., tau=1.).to(device)
     elif args.train_loss_fn == 'mse':
-        train_loss_fn = MixedMSEPoweImbalanceV2(alpha=1., tau=0., noramlize=True, split_real_imag=True).to(device)
+        train_loss_fn = LossFunc(alpha=1., tau=0.).to(device)
     elif args.train_loss_fn == 'mixed_mse_power_imbalance' or args.train_loss_fn == 'mixed':
-        train_loss_fn = MixedMSEPoweImbalanceV2(alpha=alpha, tau=tau, noramlize=True, split_real_imag=True, pre_transforms=inv_trans).to(device)
+        train_loss_fn = LossFunc(alpha=alpha, tau=tau).to(device)
     else:
-        train_loss_fn = MixedMSEPoweImbalanceV2(alpha=1., tau=0., noramlize=True, split_real_imag=True).to(device) # mse
+        train_loss_fn = LossFunc(alpha=1., tau=0.).to(device) # mse
     ##  eval loss function
     eval_funcs = {
         'MaskedL2': MaskedL2Eval(normalize=False, split_real_imag=False, pre_transforms=inv_trans),
