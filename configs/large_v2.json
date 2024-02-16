@@ -1,0 +1,18 @@
+{
+    "data_dir":     "data/power_flow_dataset/",
+    "model":        "MaskEmbdMultiMPN",
+    "nfeature_dim": 4,
+    "efeature_dim": 2,
+    "output_dim":   4,
+    "hidden_dim":   512,
+    "n_gnn_layers": 8,
+    "K":            4,
+    "dropout_rate": 0.2,
+    "num_epochs":   200,
+    "batch_size":   128,
+    "lr":           0.001,
+    "alpha":        0.995,
+    "tau":          0.01,
+    "wandb":        true,
+    "disable_normalize": true
+}
