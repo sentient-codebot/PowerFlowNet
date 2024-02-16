@@ -11,7 +11,7 @@ from torch.optim.optimizer import Optimizer
 import torch.nn as nn
 from tqdm import tqdm
 
-from utils.custom_loss_functions import MaskedL2Eval, PowerImbalanceV2, MixedMSEPoweImbalanceV2, get_mask_from_bus_type
+from utils.custom_loss_functions import MaskedL2Eval, PowerImbalanceV2, MaskedL1Eval, MixedMSEPoweImbalanceV2, get_mask_from_bus_type
 
 LOG_DIR = 'logs'
 SAVE_DIR = 'models'
@@ -82,7 +82,7 @@ def evaluate_epoch(
 
         is_to_pred = get_mask_from_bus_type(data.bus_type) # 0, 1 mask of (N, 4). 1 is need to predict
         for func_name, func in eval_funcs.items():
-            if isinstance(func, MaskedL2Eval):
+            if isinstance(func, MaskedL2Eval) or isinstance(func, MaskedL1Eval):
                 # averaged per scenario per node
                 loss_terms = func(out, data.y, is_to_pred)
                 for term_name, value in loss_terms.items():

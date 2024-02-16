@@ -31,6 +31,57 @@ def get_mask_from_bus_type(bus_type) -> torch.Tensor:
     
     return mask
 
+class MaskedL1Eval(nn.Module):
+    """ masked MAE (L1) only for evaluation 
+    """
+    def __init__(self, normalize=False, split_real_imag=False, pre_transforms:dict[str, callable]={'node':{}, 'edge':{}}):
+        super().__init__()
+        self.normalize = normalize
+        self.split_real_imag = split_real_imag
+        self.pre_transforms = pre_transforms
+        
+    @torch.no_grad()
+    def forward(self, output, target, mask):
+        " target shape (N, 4), mask shape (N, 4) "
+        for trans_func in self.pre_transforms['node'].values():
+            output = trans_func(output)
+            target = trans_func(target)
+        if self.split_real_imag:
+            output_vm, output_va = output[:, 0:1], output[:, 1:2]
+            output_vreal, output_vimag = output_vm * torch.cos(output_va), output_vm * torch.sin(output_va)
+            target_vm, target_va = target[:, 0:1], target[:, 1:2]
+            target_vreal, target_vimag = target_vm * torch.cos(target_va), target_vm * torch.sin(target_va)
+            output = torch.cat([output_vreal, output_vimag, output[:, 2:4]], dim=-1)
+            target = torch.cat([target_vreal, target_vimag, target[:, 2:4]], dim=-1)
+            _pred_vrealvimag = torch.logical_or(mask[:, 0:1], mask[:, 1:2]) # (N, 1)
+            mask = torch.cat([_pred_vrealvimag, _pred_vrealvimag, mask[:, 2:4]], dim=-1) # (N, 4)
+        else:
+            output_va = output[:, 1:2]
+            target_va = target[:, 1:2]
+            output = torch.cat([output[:, 0:1], output_va, output[:, 2:4]], dim=-1)
+            target = torch.cat([target[:, 0:1], target_va, target[:, 2:4]], dim=-1)
+        if self.normalize:
+            target_mean = target.mean(dim=0, keepdim=True)
+            target_std = target.std(dim=0, keepdim=True)
+            output = (output - target_mean) / target_std
+            target = (target - target_mean) / target_std
+
+        error = F.l1_loss(output, target, reduction='none') # (N, 4)
+        error = (error * mask).sum(dim=0) / mask.sum(dim=0).clamp(min=1e-6) # (4,)
+        
+        loss_terms = {}
+        loss_terms['total'] = error.mean()
+        if self.split_real_imag:
+            loss_terms['vreal'] = error[0]
+            loss_terms['vimag'] = error[1]
+        else:
+            loss_terms['vm'] = error[0]
+            loss_terms['va'] = error[1]
+        loss_terms['p'] = error[2]
+        loss_terms['q'] = error[3]
+
+        return loss_terms
+
 class MaskedL2Eval(nn.Module):
     """
     masked l2 only for evaluation

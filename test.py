@@ -12,7 +12,7 @@ from torch_geometric.loader import DataLoader
 from utils.evaluation import evaluate_epoch
 from utils.argument_parser import argument_parser
 
-from utils.custom_loss_functions import MaskedL2Eval, PowerImbalanceV2
+from utils.custom_loss_functions import MaskedL2Eval, PowerImbalanceV2, MaskedL1Eval
 
 LOG_DIR = 'logs'
 SAVE_DIR = 'models'
@@ -20,7 +20,7 @@ SAVE_DIR = 'models'
 
 @torch.no_grad()
 def main():
-    run_id = '20240208-1129'
+    run_id = '20240215-2449'
     models = {
         'MPN': MPN,
         'MPN_simplenet': MPN_simplenet,
@@ -65,16 +65,20 @@ def main():
     inv_trans = saved.get('inverse_transforms', {'data':{}, 'node':{}, 'edge':{}})
     
     test_dp = create_pf_dp(data_dir, grid_case, 'test', False, 50000, transforms=trans['data'])
-    test_batch_dp = create_batch_dp(test_dp, batch_size, normalize=False)
+    test_batch_dp, *_ = create_batch_dp(test_dp, batch_size, normalize=False)
     test_loader = create_dataloader(test_batch_dp, num_workers=1, shuffle=False)
     
     pwr_imb_loss = PowerImbalanceV2(inv_trans).to(device)
     masked_l2_split = MaskedL2Eval(normalize=False, split_real_imag=True, pre_transforms=inv_trans).to(device)
     masked_l2 = MaskedL2Eval(normalize=False, split_real_imag=False, pre_transforms=inv_trans).to(device)
+    masked_l1_split = MaskedL1Eval(normalize=False, split_real_imag=True, pre_transforms=inv_trans).to(device)
+    masked_l1 = MaskedL1Eval(normalize=False, split_real_imag=False, pre_transforms=inv_trans).to(device)
     eval_funcs = {
         'PowerImbalance': pwr_imb_loss,
         'MaskedL2Split': masked_l2_split,
         'MaskedL2': masked_l2,
+        'MaskedL1Split': masked_l1_split,
+        'MaskedL1': masked_l1,
     }
     
     print(f"Model: {args.model}")

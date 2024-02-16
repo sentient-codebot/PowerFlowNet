@@ -16,7 +16,7 @@ from networks.MPN import MPN, MPN_simplenet, SkipMPN, MaskEmbdMPN, MultiConvNet,
 from utils.argument_parser import argument_parser
 from utils.training import train_epoch, append_to_json
 from utils.evaluation import evaluate_epoch
-from utils.custom_loss_functions import MaskedL2Loss, PowerImbalanceV2, MixedMSEPoweImbalanceV2, MaskedL2Eval, EdgeWeightType
+from utils.custom_loss_functions import MaskedL2Loss, PowerImbalanceV2, MixedMSEPoweImbalanceV2, MaskedL2Eval, EdgeWeightType, MaskedL1Eval
 
 import wandb
 
@@ -105,6 +105,8 @@ def main():
     eval_funcs = {
         'MaskedL2': MaskedL2Eval(normalize=False, split_real_imag=False, pre_transforms=inv_trans),
         'MaskedL2Split': MaskedL2Eval(normalize=False, split_real_imag=True, pre_transforms=inv_trans),
+        'MaskedL1': MaskedL1Eval(normalize=False, split_real_imag=False, pre_transforms=inv_trans),
+        'MaskedL1Split': MaskedL1Eval(normalize=False, split_real_imag=True, pre_transform=inv_trans),
         'PowerImbalance': PowerImbalanceV2(pre_transforms=inv_trans)
     }
     
