@@ -106,7 +106,7 @@ def main():
         'MaskedL2': MaskedL2Eval(normalize=False, split_real_imag=False, pre_transforms=inv_trans),
         'MaskedL2Split': MaskedL2Eval(normalize=False, split_real_imag=True, pre_transforms=inv_trans),
         'MaskedL1': MaskedL1Eval(normalize=False, split_real_imag=False, pre_transforms=inv_trans),
-        'MaskedL1Split': MaskedL1Eval(normalize=False, split_real_imag=True, pre_transform=inv_trans),
+        'MaskedL1Split': MaskedL1Eval(normalize=False, split_real_imag=True, pre_transforms=inv_trans),
         'PowerImbalance': PowerImbalanceV2(pre_transforms=inv_trans)
     }
     
