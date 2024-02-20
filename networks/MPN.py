@@ -1,11 +1,16 @@
 from typing import Annotated as Float
 from typing import Annotated as Int
+from functools import partial
 
 import torch
 import torch.nn as nn
 from torch import Tensor
+import torch_geometric
 from torch_geometric.nn import MessagePassing, TAGConv, GCNConv, ChebConv
-from torch_geometric.utils import degree
+from torch_geometric.nn.conv.gcn_conv import gcn_norm
+from torch_geometric.nn.inits import zeros
+from torch_geometric.typing import Adj, OptTensor, SparseTensor
+from torch_geometric.utils import degree, spmm
 
 def copy_one_way_edges(edge_index, edge_attr):
     edge_index_reverse = torch.stack(
@@ -13,11 +18,13 @@ def copy_one_way_edges(edge_index, edge_attr):
         dim = 0
     )   # (2, E)
     edge_index_reverse = edge_index_reverse[:, edge_index[0,:] != edge_index[1,:]] # remove self-loops, (2, E-N)
-    edge_attr_reverse = edge_attr[edge_index[0,:] != edge_index[1,:]] # (E-N, 2)
     modified_edge_index = torch.cat(
         [edge_index, edge_index_reverse],
         dim = 1
     ) # (2, 2*E-N)
+    if edge_attr is None:
+        return modified_edge_index, edge_attr
+    edge_attr_reverse = edge_attr[edge_index[0,:] != edge_index[1,:]] # (E-N, 2)
     modified_edge_attr = torch.cat(
         [edge_attr, edge_attr_reverse],
         dim = 0
@@ -761,9 +768,11 @@ class MaskEmbdMultiMPNV2(nn.Module):
         self.init_groupnorm = nn.GroupNorm(in_channels_node, in_channels_node) # instance norm, norm in each channel individually
         self.mid_layers = nn.ModuleList()
 
+        Conv = partial(PFTAGConv, bias=True, normalize=True, edge_in_channels=2, 
+                       learn_edge_weight=True)
         self.init_conv = nn.ModuleDict({
             'mp': EdgeAggregationV2(in_channels_node, in_channels_edge, hidden_dim, hidden_dim),
-            'conv': TAGConv(hidden_dim, hidden_dim, K=K)
+            'conv': Conv(hidden_dim, hidden_dim, K=K)
         })
 
         for l in range(n_gnn_layers-2):
@@ -781,7 +790,7 @@ class MaskEmbdMultiMPNV2(nn.Module):
                 'ln1': nn.LayerNorm(hidden_dim, elementwise_affine=False),
                 'ln2': nn.LayerNorm(hidden_dim, elementwise_affine=False),
                 'mp': EdgeAggregationV2(hidden_dim, in_channels_edge, hidden_dim, hidden_dim),
-                'conv': TAGConv(hidden_dim, hidden_dim, K=K),
+                'conv': Conv(hidden_dim, hidden_dim, K=K),
                 'mlp': nn.Sequential(
                     nn.Linear(hidden_dim, 4*hidden_dim),
                     nn.SiLU(),
@@ -844,7 +853,7 @@ class MaskEmbdMultiMPNV2(nn.Module):
         
         # init conv
         x = self.init_conv['mp'](x, edge_index, edge_features)
-        x = self.init_conv['conv'](x, edge_index)
+        x = self.init_conv['conv'](x, edge_index, edge_features)
         
         # make graph undirected -> edge aggr does this internally
         # edge_index, edge_features = self.undirect_graph(edge_index, edge_features)
@@ -862,7 +871,7 @@ class MaskEmbdMultiMPNV2(nn.Module):
             x = x * (1.+scale) + shift
             x = mp(x=x, edge_index=edge_index, edge_attr=edge_features)
             x = nn.SiLU()(x)
-            x = conv(x=x, edge_index=edge_index)
+            x = conv(x=x, edge_index=edge_index, edge_weight=edge_features)
             x = x + x_copy
             x_copy = x
             x = ln2(x)
@@ -1058,3 +1067,134 @@ class TypeSensitiveGCN(nn.Module):
         x = self.final_mp(x, edge_index, edge_attr)
         
         return x
+    
+class PFTAGConv(MessagePassing):
+    r"""**Power Flow-tailored** topology adaptive graph convolutional networks operator from the
+    `"Topology Adaptive Graph Convolutional Networks"
+    <https://arxiv.org/abs/1710.10370>`_ paper.
+
+    .. math::
+        \mathbf{X}^{\prime} = \sum_{k=0}^K \left( \mathbf{D}^{-1/2} \mathbf{A}
+        \mathbf{D}^{-1/2} \right)^k \mathbf{X} \mathbf{W}_{k},
+
+    where :math:`\mathbf{A}` denotes the adjacency matrix and
+    :math:`D_{ii} = \sum_{j=0} A_{ij}` its diagonal degree matrix.
+    The adjacency matrix can include other values than :obj:`1` representing
+    edge weights via the optional :obj:`edge_weight` tensor.
+
+    Args:
+        in_channels (int): Size of each input sample, or :obj:`-1` to derive
+            the size from the first input(s) to the forward method.
+        out_channels (int): Size of each output sample.
+        K (int, optional): Number of hops :math:`K`. (default: :obj:`3`)
+        bias (bool, optional): If set to :obj:`False`, the layer will not learn
+            an additive bias. (default: :obj:`True`)
+        normalize (bool, optional): Whether to apply symmetric normalization.
+            (default: :obj:`True`)
+        **kwargs (optional): Additional arguments of
+            :class:`torch_geometric.nn.conv.MessagePassing`.
+
+    Shapes:
+        - **input:**
+          node_features :math:`(|\mathcal{V}|, F_{in})`,
+          edge_index :math:`(2, |\mathcal{E}|)`,
+          edge_weights :math:`(|\mathcal{E}|)` *(optional)*
+        - **output:** node features :math:`(|\mathcal{V}|, F_{out})`
+    """
+    def __init__(self, in_channels: int, out_channels: int, K: int = 3,
+                 bias: bool = True, normalize: bool = True, edge_in_channels: int = 2, 
+                 learn_edge_weight: bool = False, **kwargs):
+        kwargs.setdefault('aggr', 'add')
+        super().__init__(**kwargs)
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.edge_in_channels = edge_in_channels
+        self.K = K
+        self.normalize = normalize
+        self.learn_edge_weight = learn_edge_weight
+        
+        self.lins = torch.nn.ModuleList([
+            torch_geometric.nn.dense.Linear(in_channels, out_channels, bias=False) for _ in range(K + 1)
+        ])
+        self.edge_mlp = torch.nn.ModuleList([])
+        for _ in range(K):
+            if learn_edge_weight:
+                _edge_mlp = torch.nn.Sequential(
+                    torch_geometric.nn.dense.Linear(edge_in_channels, out_channels),
+                    torch.nn.SiLU(),
+                    torch_geometric.nn.dense.Linear(out_channels, 1)
+                ) # (E, edge_in_channels) -> (E, 1)
+            else:
+                _edge_mlp = nn.Identity() # should not be called
+            self.edge_mlp.append(_edge_mlp)
+
+        if bias:
+            self.bias = torch.nn.Parameter(torch.empty(out_channels))
+        else:
+            self.register_parameter('bias', None)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        super().reset_parameters()
+        for lin in self.lins:
+            lin.reset_parameters()
+        zeros(self.bias)
+        if self.learn_edge_weight:
+            for mlp in self.edge_mlp:
+                for module in mlp.modules():
+                    if hasattr(module, 'weight') and module.weight is not None:
+                        nn.init.xavier_uniform_(module.weight)
+                    if hasattr(module, 'bias') and module.bias is not None:
+                        nn.init.zeros_(module.bias)
+        
+    def maybe_normalize(self, edge_index, edge_weight, num_nodes, improved, add_self_loops, dtype):
+        if self.normalize:
+            if isinstance(edge_index, Tensor):
+                edge_index, edge_weight = gcn_norm(  # yapf: disable
+                    edge_index, edge_weight, num_nodes,
+                    improved=improved, add_self_loops=add_self_loops, flow=self.flow,
+                    dtype=dtype)
+            elif isinstance(edge_index, SparseTensor):
+                edge_index = gcn_norm(  # yapf: disable
+                        edge_index, None, num_nodes,
+                        add_self_loops=add_self_loops, flow=self.flow, dtype=dtype)
+        
+        return edge_index, edge_weight
+    
+    def maybe_edge_mlp(self, edge_mlp, edge_weight):
+        if self.learn_edge_weight:
+            return 1. + edge_mlp(edge_weight)
+        else:
+            return edge_weight
+
+    def forward(self, x: Tensor, edge_index: Adj,
+                edge_weight: Float[Tensor, 'E, d']|None = None) -> Tensor:
+        if True: # add undirected edges
+            edge_index, edge_weight = copy_one_way_edges(edge_index, edge_weight)
+
+        out = self.lins[0](x)
+        for lin, edge_mlp in zip(self.lins[1:], self.edge_mlp):
+            # propagate_type: (x: Tensor, edge_weight: OptTensor)
+            _edge_index, _edge_weight = self.maybe_normalize(edge_index, 
+                                                             self.maybe_edge_mlp(edge_mlp, edge_weight), 
+                                                             x.size(self.node_dim), False, False, x.dtype)
+            x = self.propagate(_edge_index, x=x, edge_weight=_edge_weight)
+            out = out + lin.forward(x)
+
+        if self.bias is not None:
+            out = out + self.bias
+
+        return out
+
+
+    def message(self, x_j: Tensor, edge_weight) -> Tensor:
+        return x_j if edge_weight is None else edge_weight.view(-1, 1) * x_j
+
+    def message_and_aggregate(self, adj_t, x: Tensor) -> Tensor:
+        return spmm(adj_t, x, reduce=self.aggr)
+
+    def __repr__(self) -> str:
+        return (f'{self.__class__.__name__}({self.in_channels}, '
+                f'{self.out_channels}, K={self.K})')
